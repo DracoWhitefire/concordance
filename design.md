@@ -203,10 +203,23 @@ the previous optimistic behavior.
   component can be replaced or wrapped via `NegotiatorBuilder` to accommodate
   platform-specific rules, restricted enumeration, or custom ranking, without touching the
   crate source.
-- **`no_std` where it counts.** `is_config_viable` requires no allocation. The ranked
-  iterator requires `alloc`. The crate is structured to allow `no_std + alloc` builds.
+- **Tiered resource model.** Three audiences are explicitly supported, each with its own
+  build profile:
+  - `no_std`, no alloc, no copy — `is_config_viable` borrows all inputs and returns
+    structured violations with no heap use. Targets firmware and embedded consumers.
+  - `no_std + alloc` — the ranked iterator and `ReasoningTrace` require allocation but
+    avoid unnecessary copies; inputs are still borrowed throughout.
+  - `std` — full feature set. The `std` dependency is additive and never required for
+    core negotiation logic.
+  Borrowing is the default throughout the API. Owned types appear only where the output
+  genuinely needs to outlive its inputs.
 - **Stable output types.** `NegotiatedConfig` and `SourceCapabilities` are versioned output
   structs. Consumers are insulated from internal changes.
+- **Serde on all public types.** Every public type derives `Serialize`/`Deserialize` behind
+  a `serde` feature flag. This covers at minimum inputs (`SourceCapabilities`,
+  `CableCapabilities`), outputs (`NegotiatedConfig`, `ReasoningTrace`), and policy types
+  (`NegotiationPolicy`). Enables diagnostic tooling, config persistence, and test fixtures
+  without making serde a required dependency.
 
 ---
 
