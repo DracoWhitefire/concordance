@@ -25,6 +25,7 @@ its opinions are configurable and its reasoning is always visible.
 - FRL tier (or TMDS, if applicable)
 - DSC required flag
 - VRR applicability
+- `Vec<Warning>` — non-fatal observations about the accepted configuration
 - `ReasoningTrace`
 
 ---
@@ -136,9 +137,29 @@ platform-specific priorities (e.g. always prefer a specific refresh rate, or pen
 
 ## NegotiatedConfig and ReasoningTrace
 
-Each entry in the ranked output includes a reasoning trace:
+Each entry in the ranked output includes non-fatal warnings and a reasoning trace.
+`NegotiatedConfig` is generic over the warning type, defaulting to the built-in `Warning`:
 
 ```rust
+pub struct NegotiatedConfig<W = Warning> {
+    // resolved fields ...
+    pub warnings: Vec<W>,
+    pub trace: ReasoningTrace,
+}
+
+/// Bound required on all warning types, built-in or custom.
+pub trait Diagnostic: fmt::Display + fmt::Debug {}
+
+#[derive(Debug, thiserror::Error)]
+pub enum Warning {
+    #[error("DSC required; lossy compression active")]
+    DscActive,
+    #[error("cable bandwidth marginal for selected mode")]
+    CableBandwidthMarginal,
+    // ...
+}
+impl Diagnostic for Warning {}
+
 pub enum DecisionStep {
     Accepted { adjustments: Vec<Adjustment> },
     Rejected { reason: RejectionReason, details: String },
@@ -150,8 +171,36 @@ pub struct ReasoningTrace {
 }
 ```
 
-Diagnostics are first-class and machine-readable. A compositor can ignore the trace; a
-driver or diagnostic tool needs it.
+`ConstraintEngine` and `ConfigRanker` each declare an associated `Warning` type bounded by
+`Diagnostic`, so a custom component can emit its own warning variants without wrapping or
+losing type information. The default implementations use the built-in `Warning`.
+
+Warnings are attached to accepted configurations — they do not prevent a mode from being
+offered, but give the caller enough information to surface concerns to the user or log them.
+Diagnostics are first-class and machine-readable. A compositor can ignore both; a driver or
+diagnostic tool needs them.
+
+## Error Handling
+
+Fatal errors (invalid inputs, internal invariant violations) are represented as a
+`thiserror`-derived `Error` type returned from fallible API entry points.
+
+`Violation`, used in `is_config_viable`, is a `thiserror` error type with an associated
+type on `ConstraintEngine`:
+
+```rust
+pub trait ConstraintEngine {
+    type Warning: Diagnostic;
+    type Violation: Diagnostic;
+    // ...
+}
+```
+
+A custom `ConstraintEngine` implementation can define its own `Violation` type — adding
+platform-specific rejection reasons — without wrapping the built-in enum or losing
+structured information. The built-in `Violation` type remains the default.
+
+`thiserror` is a build-time dependency only; it generates no runtime overhead.
 
 ---
 
@@ -202,7 +251,9 @@ the previous optimistic behavior.
   `CandidateEnumerator`, `ConfigRanker`) are traits with default implementations. Any
   component can be replaced or wrapped via `NegotiatorBuilder` to accommodate
   platform-specific rules, restricted enumeration, or custom ranking, without touching the
-  crate source.
+  crate source. Warning and violation types are associated types on these traits, so custom
+  components can emit their own diagnostic variants with full type fidelity — no stringly
+  typed escape hatches, no loss of structure.
 - **Tiered resource model.** Three audiences are explicitly supported, each with its own
   build profile:
   - `no_std`, no alloc, no copy — `is_config_viable` borrows all inputs and returns
@@ -215,6 +266,8 @@ the previous optimistic behavior.
   genuinely needs to outlive its inputs.
 - **Stable output types.** `NegotiatedConfig` and `SourceCapabilities` are versioned output
   structs. Consumers are insulated from internal changes.
+- **No unsafe code.** The crate is marked `#![forbid(unsafe_code)]`. This is a hard
+  constraint, not a guideline.
 - **Serde on all public types.** Every public type derives `Serialize`/`Deserialize` behind
   a `serde` feature flag. This covers at minimum inputs (`SourceCapabilities`,
   `CableCapabilities`), outputs (`NegotiatedConfig`, `ReasoningTrace`), and policy types
