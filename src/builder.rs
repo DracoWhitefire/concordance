@@ -21,11 +21,8 @@ use crate::types::{CableCapabilities, SinkCapabilities, SourceCapabilities};
 /// let configs = NegotiatorBuilder::default()
 ///     .negotiate(&sink, &source, &cable);
 /// ```
-pub struct NegotiatorBuilder<
-    E = DefaultConstraintEngine,
-    En = DefaultEnumerator,
-    R = DefaultRanker,
-> {
+pub struct NegotiatorBuilder<E = DefaultConstraintEngine, En = DefaultEnumerator, R = DefaultRanker>
+{
     engine: E,
     enumerator: En,
     ranker: R,
@@ -50,10 +47,7 @@ where
     R: ConfigRanker<Warning = Warning>,
 {
     /// Overrides the constraint engine.
-    pub fn with_engine<E2: ConstraintEngine>(
-        self,
-        engine: E2,
-    ) -> NegotiatorBuilder<E2, En, R> {
+    pub fn with_engine<E2: ConstraintEngine>(self, engine: E2) -> NegotiatorBuilder<E2, En, R> {
         NegotiatorBuilder {
             engine,
             enumerator: self.enumerator,
