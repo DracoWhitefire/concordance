@@ -1,0 +1,49 @@
+//! HDMI 2.1 mode negotiation — policy layer of the display connection stack.
+//!
+//! Given sink, source, and cable capabilities (all caller-supplied), produce a ranked
+//! list of viable configurations. Answers: "what modes can I drive on this display, in
+//! what priority order, using what color format and bit depth?"
+//!
+//! # Feature flags
+//!
+//! - **`std`** *(default)* — enables `std`-dependent types; implies `alloc`.
+//! - **`alloc`** — enables the ranked iterator and `ReasoningTrace`.
+//! - **`serde`** — derives `Serialize`/`Deserialize` for all public types.
+//!
+//! Without `alloc`, only [`is_config_viable`] is available.
+#![no_std]
+#![forbid(unsafe_code)]
+#![deny(missing_docs)]
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
+#[cfg(feature = "std")]
+extern crate std;
+
+pub mod diagnostic;
+pub mod engine;
+pub mod error;
+pub mod output;
+pub mod probe;
+pub mod types;
+
+#[cfg(any(feature = "alloc", feature = "std"))]
+pub mod builder;
+#[cfg(any(feature = "alloc", feature = "std"))]
+pub mod enumerator;
+#[cfg(any(feature = "alloc", feature = "std"))]
+pub mod ranker;
+
+pub use diagnostic::Diagnostic;
+pub use error::Error;
+pub use output::warning::{Violation, Warning};
+pub use probe::is_config_viable;
+pub use types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
+
+#[cfg(any(feature = "alloc", feature = "std"))]
+pub use builder::NegotiatorBuilder;
+#[cfg(any(feature = "alloc", feature = "std"))]
+pub use output::config::NegotiatedConfig;
+#[cfg(any(feature = "alloc", feature = "std"))]
+pub use output::trace::ReasoningTrace;

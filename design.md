@@ -26,6 +26,45 @@ its opinions are configurable and its reasoning is always visible.
 - `Vec<W>` — non-fatal warnings about the accepted configuration
 - `ReasoningTrace`
 
+## SinkCapabilities
+
+`SinkCapabilities` is a plain struct the caller fills in manually. Populating it from a
+parsed `DisplayCapabilities` (from `display-types`) is the concern of the integration layer,
+not this library.
+
+```rust
+#[non_exhaustive]
+pub struct SinkCapabilities {
+    // Video modes declared by the display
+    #[cfg(any(feature = "alloc", feature = "std"))]
+    pub supported_modes: Vec<VideoMode>,
+
+    // Timing range limits (from EDID range limits descriptor)
+    pub max_pixel_clock_mhz: Option<u16>,
+    pub min_v_rate: Option<u16>,
+    pub max_v_rate: Option<u16>,
+
+    // Color encoding (from EDID base block)
+    pub digital_color_encoding: Option<DigitalColorEncoding>,
+    pub color_bit_depth: Option<ColorBitDepth>,
+
+    // HDMI 1.x capabilities (from HDMI VSDB; None if not present)
+    pub hdmi_vsdb: Option<HdmiVsdb>,
+
+    // HDMI 2.1 capabilities (from HF-SCDB; None for pre-HDMI-2.1 sinks)
+    pub hdmi_forum: Option<HdmiForumSinkCap>,
+
+    // HDR and colorimetry
+    pub hdr_static: Option<HdrStaticMetadata>,
+    pub colorimetry: Option<ColorimetryBlock>,
+}
+```
+
+`VideoMode`, `DigitalColorEncoding`, `ColorBitDepth`, `HdmiVsdb`, `HdmiForumSinkCap`,
+`HdrStaticMetadata`, and `ColorimetryBlock` are all from `display-types`. `supported_modes`
+is absent in bare `no_std` builds; `is_config_viable` does not need the mode list since
+it validates a caller-supplied candidate rather than enumerating one.
+
 ## SourceCapabilities
 
 `SourceCapabilities` is a plain struct the caller fills in manually. Populating it from
@@ -36,13 +75,16 @@ integration layer, not this library.
 #[non_exhaustive]
 pub struct SourceCapabilities {
     pub max_tmds_clock: u32,
-    pub frl_rates: BitFlags<FrlRate>,
+    pub max_frl_rate: HdmiForumFrl,
     pub dsc: Option<DscCapabilities>,
     pub quirks: QuirkFlags,
     // ...
 }
 ```
 
+`HdmiForumFrl` is from `display-types`. FRL rates are cumulative — declaring a maximum
+implies support for all lower tiers — so a single `max_frl_rate` is the right
+representation. `HdmiForumFrl::NotSupported` indicates a TMDS-only source.
 `#[non_exhaustive]` is used for forward compatibility. This struct represents real hardware
 limits and may include vendor quirks.
 
@@ -55,16 +97,16 @@ user-supplied override) is the concern of the integration layer, not this librar
 ```rust
 #[non_exhaustive]
 pub struct CableCapabilities {
-    pub hdmi_spec: HdmiSpec,           // e.g. Hdmi14, Hdmi20, Hdmi21
-    pub max_frl_rate: Option<FrlRate>, // None implies TMDS-only cable
+    pub hdmi_spec: HdmiSpec,         // e.g. Hdmi14, Hdmi20, Hdmi21
+    pub max_frl_rate: HdmiForumFrl,  // NotSupported = TMDS-only cable
     pub max_tmds_clock: u32,
     // ...
 }
 ```
 
-`HdmiSpec` encodes the cable's declared HDMI version, which determines the bandwidth
-ceiling independently of what the source and sink can negotiate. A cable may be the
-binding constraint even when both source and sink are HDMI 2.1 capable.
+`HdmiSpec` is a concordance-defined enum encoding the cable's declared HDMI version.
+`HdmiForumFrl` is from `display-types`. A cable may be the binding constraint even when
+both source and sink are HDMI 2.1 capable.
 
 `CableCapabilities::unconstrained()` is provided as a convenience for callers that have
 no cable information and wish to fall back to the optimistic assumption (source + sink
