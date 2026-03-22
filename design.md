@@ -2,9 +2,9 @@
 
 ## Role
 
-Given sink capabilities (from `piaf`) and source capabilities (a caller-supplied struct),
-produce a ranked list of viable configurations. Answers: "what modes can I drive on this
-display, in what priority order, using what color format and bit depth?"
+Given sink, source, and cable capabilities (all caller-supplied structs), produce a ranked
+list of viable configurations. Answers: "what modes can I drive on this display, in what
+priority order, using what color format and bit depth?"
 
 Concordance is the policy layer of the stack. Parsing layers below it make no judgements.
 Hardware layers above it implement specification. Concordance is explicitly opinionated, but
@@ -15,7 +15,7 @@ its opinions are configurable and its reasoning is always visible.
 ## Inputs and Output
 
 **Inputs:**
-- `&DisplayCapabilities` — from `piaf`; represents what the sink supports
+- `SinkCapabilities` — a struct defined in this library, filled in by the caller
 - `SourceCapabilities` — a struct defined in this library, filled in by the caller
 - `CableCapabilities` — a struct defined in this library, filled in by the caller
 
@@ -105,7 +105,7 @@ This is also exposed directly as the `no_std`-compatible binary probe:
 
 ```rust
 pub fn is_config_viable(
-    sink: &DisplayCapabilities,
+    sink: &SinkCapabilities,
     source: &SourceCapabilities,
     cable: &CableCapabilities,
     config: &CandidateConfig,
@@ -269,8 +269,9 @@ the previous optimistic behavior.
 - **No unsafe code.** The crate is marked `#![forbid(unsafe_code)]`. This is a hard
   constraint, not a guideline.
 - **Serde on all public types.** Every public type derives `Serialize`/`Deserialize` behind
-  a `serde` feature flag. This covers at minimum inputs (`SourceCapabilities`,
-  `CableCapabilities`), outputs (`NegotiatedConfig`, `ReasoningTrace`), and policy types
+  a `serde` feature flag. This covers at minimum inputs (`SinkCapabilities`,
+  `SourceCapabilities`, `CableCapabilities`), outputs (`NegotiatedConfig`, `ReasoningTrace`),
+  and policy types
   (`NegotiationPolicy`). Enables diagnostic tooling, config persistence, and test fixtures
   without making serde a required dependency.
 
@@ -278,6 +279,9 @@ the previous optimistic behavior.
 
 ## Out of Scope
 
+- **Sink capability discovery** — parsing EDID and HF-VSDB into `SinkCapabilities` belongs
+  in the parsing layer (e.g. `piaf`). The integration layer converts parsed output into this
+  library's `SinkCapabilities` struct. Concordance consumes it; it does not produce it.
 - **Source capability discovery** — querying DRM/KMS or VBIOS for actual GPU limits belongs
   in the integration layer. Concordance consumes `SourceCapabilities`; it does not produce it.
 - **Cable capability discovery** — reading the HDMI cable type marker from the sink EDID or
