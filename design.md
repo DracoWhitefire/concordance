@@ -10,8 +10,6 @@ Concordance is the policy layer of the stack. Parsing layers below it make no ju
 Hardware layers above it implement specification. Concordance is explicitly opinionated, but
 its opinions are configurable and its reasoning is always visible.
 
----
-
 ## Inputs and Output
 
 **Inputs:**
@@ -19,16 +17,14 @@ its opinions are configurable and its reasoning is always visible.
 - `SourceCapabilities` — a struct defined in this library, filled in by the caller
 - `CableCapabilities` — a struct defined in this library, filled in by the caller
 
-**Output:** A ranked iterator of `NegotiatedConfig`, each entry containing:
+**Output:** A ranked iterator of `NegotiatedConfig<W>`, each entry containing:
 - Resolved `VideoMode`
 - Color format and bit depth
 - FRL tier (or TMDS, if applicable)
 - DSC required flag
 - VRR applicability
-- `Vec<Warning>` — non-fatal observations about the accepted configuration
+- `Vec<W>` — non-fatal warnings about the accepted configuration
 - `ReasoningTrace`
-
----
 
 ## SourceCapabilities
 
@@ -50,8 +46,6 @@ pub struct SourceCapabilities {
 `#[non_exhaustive]` is used for forward compatibility. This struct represents real hardware
 limits and may include vendor quirks.
 
----
-
 ## CableCapabilities
 
 `CableCapabilities` is a plain struct the caller fills in manually. Populating it from
@@ -61,8 +55,8 @@ user-supplied override) is the concern of the integration layer, not this librar
 ```rust
 #[non_exhaustive]
 pub struct CableCapabilities {
-    pub hdmi_spec: HdmiSpec,        // e.g. Hdmi14, Hdmi20, Hdmi21
-    pub max_frl_rate: Option<FrlRate>,  // None implies TMDS-only cable
+    pub hdmi_spec: HdmiSpec,           // e.g. Hdmi14, Hdmi20, Hdmi21
+    pub max_frl_rate: Option<FrlRate>, // None implies TMDS-only cable
     pub max_tmds_clock: u32,
     // ...
 }
@@ -75,8 +69,6 @@ binding constraint even when both source and sink are HDMI 2.1 capable.
 `CableCapabilities::unconstrained()` is provided as a convenience for callers that have
 no cable information and wish to fall back to the optimistic assumption (source + sink
 limits only).
-
----
 
 ## Internal Architecture
 
@@ -117,8 +109,13 @@ cannot afford allocation or iteration use this function directly.
 
 ### 2. Enumerator
 
-Generates all possible candidate configurations from the intersection of sink, source, and
-cable capabilities. Policy-free: it produces candidates, not preferences.
+Generates all candidate configurations from the intersection of sink, source, and cable
+capabilities. Completely policy-free: the enumerator produces candidates; it never
+pre-filters based on perceived usefulness. No candidate is dropped at enumeration time —
+rejection happens only in the constraint engine.
+
+Equivalent candidates (same mode, format, and tier reached by different paths) are
+deduplicated by the pipeline before ranking.
 
 Custom enumerators can restrict or expand the candidate set (e.g. to limit enumeration to a
 specific resolution list on embedded targets) without altering constraint or ranking logic.
@@ -133,11 +130,13 @@ Named policy presets (`BestQuality`, `BestPerformance`, `PowerSaving`) are a thi
 top of the same ranked iterator. Custom `NegotiationPolicy` implementations can encode
 platform-specific priorities (e.g. always prefer a specific refresh rate, or penalize DSC).
 
----
-
 ## NegotiatedConfig and ReasoningTrace
 
-Each entry in the ranked output includes non-fatal warnings and a reasoning trace.
+`NegotiatedConfig` is a pure data struct — it holds resolved values. Helpers that compute
+derived results (compatibility checks, ranking utilities, mode filters) are free functions in
+separate modules, not methods on the struct. This keeps the output type stable even as
+higher-level policy evolves.
+
 `NegotiatedConfig` is generic over the warning type, defaulting to the built-in `Warning`:
 
 ```rust
@@ -200,9 +199,11 @@ A custom `ConstraintEngine` implementation can define its own `Violation` type �
 platform-specific rejection reasons — without wrapping the built-in enum or losing
 structured information. The built-in `Violation` type remains the default.
 
-`thiserror` is a build-time dependency only; it generates no runtime overhead.
+Real hardware often declares inconsistent or conflicting capabilities. Where possible,
+concordance produces the best available output and surfaces the inconsistency as a warning
+rather than refusing to negotiate. Callers decide how strict to be.
 
----
+`thiserror` is a build-time dependency only; it generates no runtime overhead.
 
 ## Consumer Perspectives
 
@@ -214,8 +215,6 @@ structured information. The built-in `Violation` type remains the default.
 | Test / validation    | Full enumeration including edge cases                 |
 | End-user config tool | Named presets wrapping the ranked iterator            |
 
----
-
 ## Cable Consideration
 
 HDMI link capability is determined by:
@@ -225,8 +224,9 @@ Source + Sink + Cable → Link Training → Actual Limits
 ```
 
 Concordance takes an explicit `CableCapabilities` input and treats the cable as a first-class
-constraint alongside source and sink. A cable that cannot carry FRL, or whose TMDS clock ceiling
-is below the required pixel rate, produces a `Violation` like any other constraint failure.
+constraint alongside source and sink. A cable that cannot carry FRL, or whose TMDS clock
+ceiling is below the required pixel rate, produces a `Violation` like any other constraint
+failure.
 
 Link training (in the SCDC/link training layer above) determines the real-world ceiling.
 A `NegotiatedConfig` may still need to be revised downward after training, but the cable's
@@ -235,47 +235,89 @@ declared capabilities are enforced at negotiation time, not deferred.
 Callers without cable information may pass `CableCapabilities::unconstrained()` to recover
 the previous optimistic behavior.
 
----
-
 ## Design Principles
 
-- **Ranked iterator, not a verdict.** There is no single right answer. The library
+- **Ranked iterator, not a verdict** — there is no single right answer. The library
   enumerates all valid configurations in a defined, documented priority order and lets the
   caller pick. No mode is silently discarded — rejections appear in the trace.
-- **No black box.** Every output entry carries enough context for a driver or diagnostic
+- **No black box** — every output entry carries enough context for a driver or diagnostic
   tool to explain the choice.
-- **Configurable behavior.** Ranking priorities are governed by a `NegotiationPolicy` the
+- **Configurable behavior** — ranking priorities are governed by a `NegotiationPolicy` the
   caller supplies; named presets are provided for common cases. Constraint checking can be
   tuned via `QuirkFlags`. No behavioral choices are buried in the implementation.
-- **Extensible without forking.** The three pipeline components (`ConstraintEngine`,
+- **Extensible without forking** — the three pipeline components (`ConstraintEngine`,
   `CandidateEnumerator`, `ConfigRanker`) are traits with default implementations. Any
   component can be replaced or wrapped via `NegotiatorBuilder` to accommodate
   platform-specific rules, restricted enumeration, or custom ranking, without touching the
   crate source. Warning and violation types are associated types on these traits, so custom
-  components can emit their own diagnostic variants with full type fidelity — no stringly
-  typed escape hatches, no loss of structure.
-- **Tiered resource model.** Three audiences are explicitly supported, each with its own
+  components can emit their own diagnostic variants with full type fidelity.
+- **`NegotiatedConfig` is a data struct, not a decision layer** — it holds resolved values.
+  Derived operations live as free functions in separate modules, not as methods on the struct.
+- **Tiered resource model** — three audiences are explicitly supported, each with its own
   build profile:
   - `no_std`, no alloc, no copy — `is_config_viable` borrows all inputs and returns
     structured violations with no heap use. Targets firmware and embedded consumers.
   - `no_std + alloc` — the ranked iterator and `ReasoningTrace` require allocation but
     avoid unnecessary copies; inputs are still borrowed throughout.
-  - `std` — full feature set. The `std` dependency is additive and never required for
-    core negotiation logic.
+  - `std` — full feature set; additive on top of `alloc`.
   Borrowing is the default throughout the API. Owned types appear only where the output
   genuinely needs to outlive its inputs.
-- **Stable output types.** `NegotiatedConfig` and `SourceCapabilities` are versioned output
-  structs. Consumers are insulated from internal changes.
-- **No unsafe code.** The crate is marked `#![forbid(unsafe_code)]`. This is a hard
-  constraint, not a guideline.
-- **Serde on all public types.** Every public type derives `Serialize`/`Deserialize` behind
-  a `serde` feature flag. This covers at minimum inputs (`SinkCapabilities`,
-  `SourceCapabilities`, `CableCapabilities`), outputs (`NegotiatedConfig`, `ReasoningTrace`),
-  and policy types
-  (`NegotiationPolicy`). Enables diagnostic tooling, config persistence, and test fixtures
-  without making serde a required dependency.
+- **Stable output types** — `NegotiatedConfig` and the three input structs are
+  `#[non_exhaustive]` and versioned. Consumers are insulated from internal changes.
+- **No unsafe code** — `#![forbid(unsafe_code)]` is a hard constraint, not a guideline.
+- **Serde on all public types** — every public type derives `Serialize`/`Deserialize` behind
+  a `serde` feature flag, covering inputs, outputs, and policy types. Enables diagnostic
+  tooling, config persistence, and test fixtures without making serde a required dependency.
 
----
+## Testing
+
+Negotiation logic benefits from a testing approach that combines small deterministic tests
+with larger corpus-based validation.
+
+### Unit tests
+
+Unit tests cover narrow pieces of logic and live next to the code they test. Constraint
+engine tests call `check` directly on handcrafted capability structs without going through
+the full pipeline. Enumerator tests assert on the candidate set produced from a given
+capability triple. This keeps failures localized: a failing test in the engine can only
+mean the engine is broken.
+
+### Integration tests
+
+A single integration test verifies that `NegotiatorBuilder::default()` wires the pipeline
+correctly and that `negotiate` invokes all three components. It does not duplicate the
+field-level assertions that belong in component unit tests.
+
+### Fixture tests
+
+Concordance should maintain a fixture corpus containing:
+
+- valid capability triples from real hardware,
+- capability declarations with known inconsistencies,
+- edge cases (TMDS-only cable, DSC required, VRR boundary conditions),
+- pathological inputs.
+
+A suggested layout:
+```text
+testdata/
+ ├── valid/
+ ├── invalid/
+ └── edge/
+```
+
+Fixtures serve as a regression suite and a confidence base for refactoring negotiation logic
+without unintentionally changing behaviour.
+
+### Fuzzing
+
+Fuzzing is strongly recommended for the constraint engine and enumerator.
+
+Important expectations:
+
+- no panics,
+- no uncontrolled memory growth,
+- any input produces controlled output (violations, warnings) rather than undefined behaviour,
+- unknown or conflicting capability values do not break pipeline invariants.
 
 ## Out of Scope
 
