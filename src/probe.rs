@@ -1,8 +1,10 @@
 //! The `is_config_viable` binary probe function.
 
-use crate::engine::{CheckResult, DefaultConstraintEngine};
 use crate::engine::ConstraintEngine;
-use crate::output::warning::{Violation, Warning};
+use crate::engine::DefaultConstraintEngine;
+use crate::output::warning::Violation;
+#[cfg(any(feature = "alloc", feature = "std"))]
+use crate::output::warning::Warning;
 use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
 
 /// Determines whether a specific configuration is viable for the given capabilities.
@@ -16,11 +18,23 @@ use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceC
 ///
 /// Callers without cable information may pass [`CableCapabilities::unconstrained()`]
 /// to recover the previous optimistic behavior.
+#[cfg(any(feature = "alloc", feature = "std"))]
 pub fn is_config_viable(
     sink: &SinkCapabilities,
     source: &SourceCapabilities,
     cable: &CableCapabilities,
     config: &CandidateConfig,
-) -> CheckResult<Warning, Violation> {
+) -> crate::engine::CheckResult<Warning, Violation> {
+    DefaultConstraintEngine.check(sink, source, cable, config)
+}
+
+/// Determines whether a specific configuration is viable for the given capabilities (no-alloc).
+#[cfg(not(any(feature = "alloc", feature = "std")))]
+pub fn is_config_viable(
+    sink: &SinkCapabilities,
+    source: &SourceCapabilities,
+    cable: &CableCapabilities,
+    config: &CandidateConfig,
+) -> crate::engine::CheckResult<Violation> {
     DefaultConstraintEngine.check(sink, source, cable, config)
 }
