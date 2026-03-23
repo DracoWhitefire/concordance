@@ -116,6 +116,8 @@ limits only).
 
 The negotiation layer is structured into three components, each defined as a trait with a
 default implementation. Callers can substitute any component without forking the crate.
+The constraint engine additionally supports rule injection — adding checks on top of the
+default implementation — via a `ConstraintRule` trait and a `Layered` combinator.
 
 ```rust
 pub trait ConstraintEngine { ... }
@@ -148,6 +150,94 @@ pub fn is_config_viable(
 
 The ranked iterator is built on top of this primitive. Firmware and embedded consumers that
 cannot afford allocation or iteration use this function directly.
+
+#### Rule injection
+
+`ConstraintEngine` enables full replacement of the constraint policy, but replacement
+requires reimplementing all HDMI specification rules — forking in disguise. For the common
+case of adding rules on top of the default checks, a finer-grained unit of extensibility
+is provided:
+
+```rust
+pub trait ConstraintRule {
+    type Warning: Diagnostic;
+    type Violation: Diagnostic;
+
+    fn check(
+        &self,
+        sink: &SinkCapabilities,
+        source: &SourceCapabilities,
+        cable: &CableCapabilities,
+        config: &CandidateConfig,
+    ) -> CheckResult<Self::Warning, Self::Violation>;
+}
+```
+
+`ConstraintRule` is the unit of a single check. `ConstraintEngine::check` is identical in
+shape, so every engine is also a valid rule and the two compose cleanly.
+
+A `Layered<Base, Extra>` combinator chains a base engine with an additional rule. Two
+composition strategies are supported:
+
+**Shared types (default path)** — the extra rule emits the same `Warning` and `Violation`
+types as the base engine. No conversion is required and the common case (adding rules on
+top of the built-in types) involves no boilerplate:
+
+```rust
+// Extra must share the base engine's associated types.
+impl<B, R> ConstraintEngine for Layered<B, R>
+where
+    B: ConstraintEngine,
+    R: ConstraintRule<Warning = B::Warning, Violation = B::Violation>,
+{
+    type Warning = B::Warning;
+    type Violation = B::Violation;
+    // ...
+}
+```
+
+**`From` bounds (escape hatch)** — when the extra rule emits distinct types, both are
+converted into a common output type via `From`. Full type fidelity is preserved; the
+caller names the output types explicitly:
+
+```rust
+impl<B, R, W, V> ConstraintEngine for Layered<B, R>
+where
+    B: ConstraintEngine<Warning: Into<W>, Violation: Into<V>>,
+    R: ConstraintRule<Warning: Into<W>, Violation: Into<V>>,
+    W: Diagnostic,
+    V: Diagnostic,
+{
+    type Warning = W;
+    type Violation = V;
+    // ...
+}
+```
+
+`NegotiatorBuilder` exposes a composing entry point so a caller never needs to construct
+`Layered` directly:
+
+```rust
+impl NegotiatorBuilder<E, En, R> {
+    pub fn with_extra_rule<Rule>(self, rule: Rule) -> NegotiatorBuilder<Layered<E, Rule>, En, R>
+    where
+        Rule: ConstraintRule<Warning = E::Warning, Violation = E::Violation>,
+    { ... }
+}
+```
+
+A platform-specific caller writes only their rule and passes it in:
+
+```rust
+let configs = NegotiatorBuilder::default()
+    .with_extra_rule(PlatformBandwidthRule::new(limits))
+    .negotiate(&sink, &source, &cable);
+```
+
+`DefaultConstraintEngine` is itself decomposed into `ConstraintRule` implementations
+internally, so advanced callers who need selective control — including or excluding
+specific built-in checks — can compose their own engine from individual rules without
+reimplementing any specification logic.
 
 ### 2. Enumerator
 
