@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 
 use display_types::cea861::HdmiForumFrl;
-use display_types::{ColorBitDepth, DigitalColorEncoding, VideoMode};
+use display_types::{ColorBitDepth, ColorFormat, VideoMode};
 
 use crate::output::trace::ReasoningTrace;
 use crate::output::warning::Warning;
@@ -23,7 +23,7 @@ pub struct NegotiatedConfig<W = Warning> {
     pub mode: VideoMode,
 
     /// Color encoding format for this configuration.
-    pub color_encoding: DigitalColorEncoding,
+    pub color_encoding: ColorFormat,
 
     /// Color bit depth per channel.
     pub bit_depth: ColorBitDepth,
