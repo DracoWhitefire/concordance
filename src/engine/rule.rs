@@ -26,7 +26,7 @@ pub trait ConstraintRule<V: Diagnostic> {
     /// Used in [`ReasoningTrace`][crate::output::trace::ReasoningTrace] entries to
     /// identify which rule rejected a candidate. Should be a lowercase snake_case
     /// string (e.g. `"frl_ceiling"`).
-    fn name(&self) -> &'static str;
+    fn display_name(&self) -> &'static str;
 
     /// Evaluates this rule against the supplied capabilities.
     ///
@@ -78,7 +78,7 @@ where
     R2: ConstraintRule<V>,
     V: Diagnostic,
 {
-    fn name(&self) -> &'static str {
+    fn display_name(&self) -> &'static str {
         "layered"
     }
 

@@ -5,7 +5,7 @@ use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceC
 pub(in crate::engine) struct ColorEncodingCheck;
 
 impl ConstraintRule<Violation> for ColorEncodingCheck {
-    fn name(&self) -> &'static str {
+    fn display_name(&self) -> &'static str {
         "color_encoding"
     }
 
@@ -25,7 +25,7 @@ impl ConstraintRule<Violation> for ColorEncodingCheck {
 pub(in crate::engine) struct BitDepthCheck;
 
 impl ConstraintRule<Violation> for BitDepthCheck {
-    fn name(&self) -> &'static str {
+    fn display_name(&self) -> &'static str {
         "bit_depth"
     }
 
