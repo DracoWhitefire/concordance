@@ -1,3 +1,4 @@
+use crate::diagnostic::Diagnostic;
 use crate::engine::rule::ConstraintRule;
 use crate::output::warning::Violation;
 use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
@@ -5,7 +6,7 @@ use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceC
 /// Checks DSC consistency: if DSC is enabled, both sink and source must declare support.
 pub struct DscCheck;
 
-impl ConstraintRule<Violation> for DscCheck {
+impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for DscCheck {
     fn display_name(&self) -> &'static str {
         "dsc"
     }
@@ -16,7 +17,7 @@ impl ConstraintRule<Violation> for DscCheck {
         source: &SourceCapabilities,
         _cable: &CableCapabilities,
         config: &CandidateConfig,
-    ) -> Option<Violation> {
+    ) -> Option<V> {
         let _ = (sink, source, config);
         // TODO
         None

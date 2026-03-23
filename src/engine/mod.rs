@@ -66,18 +66,39 @@ pub trait ConstraintEngine {
 
 /// Default HDMI specification constraint engine.
 ///
-/// Runs the constraint rules in `checks` in declaration order. Defaults to
-/// [`checks::DEFAULT_CHECKS`], which enforces the full set of HDMI specification
-/// rules. A custom slice can be supplied via [`DefaultConstraintEngine::with_checks`]
-/// to add, remove, or reorder rules without replacing the engine entirely.
+/// Generic over the violation type `V`, which defaults to the built-in [`Violation`]
+/// enum. Callers that need a richer violation hierarchy can define their own type
+/// and use it here, as long as it implements `From<`[`Violation`]`>`:
 ///
-/// To extend rather than replace, prefer
-/// [`NegotiatorBuilder::with_extra_rule`][crate::NegotiatorBuilder::with_extra_rule].
-pub struct DefaultConstraintEngine {
-    checks: &'static [&'static (dyn ConstraintRule<Violation> + Sync)],
+/// ```rust,ignore
+/// #[derive(Debug, Display)]
+/// enum MyViolation {
+///     Builtin(Violation),
+///     HdrCertificationFailed,
+/// }
+///
+/// impl From<Violation> for MyViolation {
+///     fn from(v: Violation) -> Self { MyViolation::Builtin(v) }
+/// }
+///
+/// static MY_CHECKS: &[&(dyn ConstraintRule<MyViolation> + Sync)] = &[
+///     &FrlCeilingCheck, &TmdsClockCheck, /* ... */ &MyHdrCheck,
+/// ];
+///
+/// NegotiatorBuilder::default()
+///     .with_engine(DefaultConstraintEngine::<MyViolation>::with_checks(MY_CHECKS))
+///     .with_extra_rule(AnotherMyRule)
+/// ```
+///
+/// For the common case — built-in violations only — `DefaultConstraintEngine::default()`
+/// uses [`checks::DEFAULT_CHECKS`] and no type annotation is needed.
+pub struct DefaultConstraintEngine<V: 'static = Violation> {
+    checks: &'static [&'static (dyn ConstraintRule<V> + Sync)],
 }
 
-impl Default for DefaultConstraintEngine {
+/// Uses [`checks::DEFAULT_CHECKS`] as the rule list. Only available for `V = Violation`
+/// since `DEFAULT_CHECKS` is typed for the built-in violation set.
+impl Default for DefaultConstraintEngine<Violation> {
     fn default() -> Self {
         Self {
             checks: checks::DEFAULT_CHECKS,
@@ -85,11 +106,11 @@ impl Default for DefaultConstraintEngine {
     }
 }
 
-impl DefaultConstraintEngine {
+impl<V: Diagnostic> DefaultConstraintEngine<V> {
     /// Constructs a `DefaultConstraintEngine` with a custom check list.
     ///
-    /// The slice must be `'static` to support `no_alloc` targets. Check sets
-    /// are always compile-time concerns; use a `static` binding:
+    /// The slice must be `'static` to support no-alloc targets. Check sets are
+    /// always compile-time concerns; use a `static` binding:
     ///
     /// ```rust,ignore
     /// use concordance::engine::checks::{FrlCeilingCheck, TmdsClockCheck};
@@ -101,13 +122,13 @@ impl DefaultConstraintEngine {
     ///
     /// let engine = DefaultConstraintEngine::with_checks(MY_CHECKS);
     /// ```
-    pub fn with_checks(checks: &'static [&'static (dyn ConstraintRule<Violation> + Sync)]) -> Self {
+    pub fn with_checks(checks: &'static [&'static (dyn ConstraintRule<V> + Sync)]) -> Self {
         Self { checks }
     }
 }
 
 /// Formats the engine as an ordered list of rule display names.
-impl fmt::Debug for DefaultConstraintEngine {
+impl<V: Diagnostic> fmt::Debug for DefaultConstraintEngine<V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut list = f.debug_list();
         for rule in self.checks {
@@ -117,9 +138,9 @@ impl fmt::Debug for DefaultConstraintEngine {
     }
 }
 
-impl ConstraintEngine for DefaultConstraintEngine {
+impl<V: Diagnostic> ConstraintEngine for DefaultConstraintEngine<V> {
     type Warning = crate::output::warning::Warning;
-    type Violation = Violation;
+    type Violation = V;
 
     fn check(
         &self,
