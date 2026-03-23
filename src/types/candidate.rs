@@ -25,4 +25,11 @@ pub struct CandidateConfig {
 
     /// Whether Display Stream Compression is applied.
     pub dsc_enabled: bool,
+
+    /// Pixel clock in kHz.
+    ///
+    /// `None` for modes not derived from a Detailed Timing Descriptor, VIC table, or DMT
+    /// table — such as modes declared via standard timing or established timing entries.
+    /// Clock-based constraint checks are skipped when absent; all other checks still run.
+    pub pixel_clock_khz: Option<u32>,
 }
