@@ -40,7 +40,7 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for FrlCeilingCheck {
         sink: &SinkCapabilities,
         source: &SourceCapabilities,
         cable: &CableCapabilities,
-        config: &CandidateConfig,
+        config: &CandidateConfig<'_>,
     ) -> Option<V> {
         if config.frl_rate == HdmiForumFrl::NotSupported {
             return None;

@@ -16,7 +16,7 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for RefreshRateCheck {
         sink: &SinkCapabilities,
         _source: &SourceCapabilities,
         _cable: &CableCapabilities,
-        config: &CandidateConfig,
+        config: &CandidateConfig<'_>,
     ) -> Option<V> {
         let _ = (sink, config);
         // TODO
@@ -25,8 +25,6 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for RefreshRateCheck {
 }
 
 /// Checks that the TMDS character rate does not exceed the ceiling for the link.
-///
-/// Skipped when `config.pixel_clock_khz` is `None`.
 pub struct TmdsClockCheck;
 
 impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for TmdsClockCheck {
@@ -39,10 +37,10 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for TmdsClockCheck {
         sink: &SinkCapabilities,
         source: &SourceCapabilities,
         cable: &CableCapabilities,
-        config: &CandidateConfig,
+        config: &CandidateConfig<'_>,
     ) -> Option<V> {
         let _ = (sink, source, cable, config);
-        // TODO: requires config.pixel_clock_khz; skip when None
+        // TODO: requires config.mode.pixel_clock_khz
         None
     }
 }

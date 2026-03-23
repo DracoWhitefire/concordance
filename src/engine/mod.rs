@@ -60,7 +60,7 @@ pub trait ConstraintEngine {
         sink: &SinkCapabilities,
         source: &SourceCapabilities,
         cable: &CableCapabilities,
-        config: &CandidateConfig,
+        config: &CandidateConfig<'_>,
     ) -> CheckResult<Self::Warning, Self::Violation>;
 }
 
@@ -146,7 +146,7 @@ impl<V: Diagnostic> ConstraintEngine for DefaultConstraintEngine<V> {
         sink: &SinkCapabilities,
         source: &SourceCapabilities,
         cable: &CableCapabilities,
-        config: &CandidateConfig,
+        config: &CandidateConfig<'_>,
     ) -> CheckResult<Self::Warning, Self::Violation> {
         #[cfg(any(feature = "alloc", feature = "std"))]
         {

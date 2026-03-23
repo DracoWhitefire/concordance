@@ -16,7 +16,7 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for ColorEncodingCheck {
         sink: &SinkCapabilities,
         _source: &SourceCapabilities,
         _cable: &CableCapabilities,
-        config: &CandidateConfig,
+        config: &CandidateConfig<'_>,
     ) -> Option<V> {
         let _ = (sink, config);
         // TODO
@@ -37,7 +37,7 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for BitDepthCheck {
         sink: &SinkCapabilities,
         _source: &SourceCapabilities,
         _cable: &CableCapabilities,
-        config: &CandidateConfig,
+        config: &CandidateConfig<'_>,
     ) -> Option<V> {
         let _ = (sink, config);
         // TODO
