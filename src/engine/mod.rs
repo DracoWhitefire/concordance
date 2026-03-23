@@ -15,17 +15,25 @@ use alloc::vec::Vec;
 
 pub use rule::ConstraintRule;
 
-/// The result of a constraint check (alloc).
+/// Maximum number of warnings that can be accumulated in a single constraint check
+/// on no-alloc targets.
 ///
-/// Returns accumulated warnings on success or accumulated violations on failure.
+/// When the engine accepts a configuration and has collected this many warnings,
+/// any further warnings are silently dropped. Increase this constant (and recompile)
+/// if more capacity is needed during debugging.
+pub const MAX_WARNINGS: usize = 8;
+
+/// The result of a constraint check.
+///
+/// - **alloc/std**: `Result<Vec<W>, Vec<V>>` — all warnings on success, all violations on failure.
+/// - **no-alloc**: `Result<[Option<W>; MAX_WARNINGS], V>` — up to [`MAX_WARNINGS`] warnings on
+///   success, the first violation encountered on failure.
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub type CheckResult<W, V> = Result<Vec<W>, Vec<V>>;
 
 /// The result of a constraint check (no-alloc).
-///
-/// Returns unit on success or the first violation encountered on failure.
 #[cfg(not(any(feature = "alloc", feature = "std")))]
-pub type CheckResult<V> = Result<(), V>;
+pub type CheckResult<W, V> = Result<[Option<W>; MAX_WARNINGS], V>;
 
 /// Determines whether a given configuration is valid for the supplied capabilities.
 ///
@@ -43,7 +51,10 @@ pub trait ConstraintEngine {
     type Violation: Diagnostic;
 
     /// Evaluates a candidate configuration against the supplied capabilities.
-    #[cfg(any(feature = "alloc", feature = "std"))]
+    ///
+    /// On alloc targets, returns all accumulated warnings on success and all
+    /// violations on failure. On no-alloc targets, returns up to
+    /// [`MAX_WARNINGS`] warnings on success and the first violation on failure.
     fn check(
         &self,
         sink: &SinkCapabilities,
@@ -51,16 +62,6 @@ pub trait ConstraintEngine {
         cable: &CableCapabilities,
         config: &CandidateConfig,
     ) -> CheckResult<Self::Warning, Self::Violation>;
-
-    /// Evaluates a candidate configuration against the supplied capabilities (no-alloc).
-    #[cfg(not(any(feature = "alloc", feature = "std")))]
-    fn check(
-        &self,
-        sink: &SinkCapabilities,
-        source: &SourceCapabilities,
-        cable: &CableCapabilities,
-        config: &CandidateConfig,
-    ) -> CheckResult<Self::Violation>;
 }
 
 /// Default HDMI specification constraint engine.
@@ -120,7 +121,6 @@ impl ConstraintEngine for DefaultConstraintEngine {
     type Warning = crate::output::warning::Warning;
     type Violation = Violation;
 
-    #[cfg(any(feature = "alloc", feature = "std"))]
     fn check(
         &self,
         sink: &SinkCapabilities,
@@ -128,34 +128,28 @@ impl ConstraintEngine for DefaultConstraintEngine {
         cable: &CableCapabilities,
         config: &CandidateConfig,
     ) -> CheckResult<Self::Warning, Self::Violation> {
-        let mut violations = Vec::new();
-
-        for rule in self.checks {
-            if let Some(v) = rule.check(sink, source, cable, config) {
-                violations.push(v);
+        #[cfg(any(feature = "alloc", feature = "std"))]
+        {
+            let mut violations = Vec::new();
+            for rule in self.checks {
+                if let Some(v) = rule.check(sink, source, cable, config) {
+                    violations.push(v);
+                }
+            }
+            if violations.is_empty() {
+                Ok(Vec::new())
+            } else {
+                Err(violations)
             }
         }
-
-        if violations.is_empty() {
-            Ok(Vec::new())
-        } else {
-            Err(violations)
-        }
-    }
-
-    #[cfg(not(any(feature = "alloc", feature = "std")))]
-    fn check(
-        &self,
-        sink: &SinkCapabilities,
-        source: &SourceCapabilities,
-        cable: &CableCapabilities,
-        config: &CandidateConfig,
-    ) -> CheckResult<Self::Violation> {
-        for rule in self.checks {
-            if let Some(v) = rule.check(sink, source, cable, config) {
-                return Err(v);
+        #[cfg(not(any(feature = "alloc", feature = "std")))]
+        {
+            for rule in self.checks {
+                if let Some(v) = rule.check(sink, source, cable, config) {
+                    return Err(v);
+                }
             }
+            Ok(Default::default())
         }
-        Ok(())
     }
 }
