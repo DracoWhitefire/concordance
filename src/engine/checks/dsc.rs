@@ -1,12 +1,23 @@
+use crate::engine::rule::ConstraintRule;
 use crate::output::warning::Violation;
-use crate::types::{CandidateConfig, SinkCapabilities, SourceCapabilities};
+use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
 
-pub(in crate::engine) fn check_dsc(
-    sink: &SinkCapabilities,
-    source: &SourceCapabilities,
-    config: &CandidateConfig,
-) -> Option<Violation> {
-    let _ = (sink, source, config);
-    // TODO
-    None
+pub(in crate::engine) struct DscCheck;
+
+impl ConstraintRule<Violation> for DscCheck {
+    fn name(&self) -> &'static str {
+        "dsc"
+    }
+
+    fn check(
+        &self,
+        sink: &SinkCapabilities,
+        source: &SourceCapabilities,
+        _cable: &CableCapabilities,
+        config: &CandidateConfig,
+    ) -> Option<Violation> {
+        let _ = (sink, source, config);
+        // TODO
+        None
+    }
 }

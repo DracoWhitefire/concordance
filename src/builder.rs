@@ -2,6 +2,7 @@
 
 use alloc::vec::Vec;
 
+use crate::engine::rule::{ConstraintRule, Layered};
 use crate::engine::{ConstraintEngine, DefaultConstraintEngine};
 use crate::enumerator::{CandidateEnumerator, DefaultEnumerator};
 use crate::output::config::NegotiatedConfig;
@@ -78,6 +79,24 @@ where
             engine: self.engine,
             enumerator: self.enumerator,
             ranker,
+            policy: self.policy,
+        }
+    }
+
+    /// Appends an extra constraint rule to the engine without replacing it.
+    ///
+    /// The rule is evaluated after all built-in checks. In alloc mode,
+    /// violations from both the base engine and the extra rule are collected;
+    /// in no-alloc mode the engine short-circuits on the first failure, so
+    /// the extra rule is only reached if all built-in checks pass.
+    pub fn with_extra_rule<X>(self, rule: X) -> NegotiatorBuilder<Layered<E, X>, En, R>
+    where
+        X: ConstraintRule<E::Violation>,
+    {
+        NegotiatorBuilder {
+            engine: Layered::new(self.engine, rule),
+            enumerator: self.enumerator,
+            ranker: self.ranker,
             policy: self.policy,
         }
     }
