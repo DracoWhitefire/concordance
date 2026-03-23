@@ -5,7 +5,7 @@ use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceC
 pub(in crate::engine) struct RefreshRateCheck;
 
 impl ConstraintRule<Violation> for RefreshRateCheck {
-    fn name(&self) -> &'static str {
+    fn display_name(&self) -> &'static str {
         "refresh_rate_range"
     }
 
@@ -25,7 +25,7 @@ impl ConstraintRule<Violation> for RefreshRateCheck {
 pub(in crate::engine) struct TmdsClockCheck;
 
 impl ConstraintRule<Violation> for TmdsClockCheck {
-    fn name(&self) -> &'static str {
+    fn display_name(&self) -> &'static str {
         "tmds_clock_ceiling"
     }
 

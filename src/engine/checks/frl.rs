@@ -30,7 +30,7 @@ pub(in crate::engine) fn frl_tier(rate: HdmiForumFrl) -> u8 {
 pub(in crate::engine) struct FrlCeilingCheck;
 
 impl ConstraintRule<Violation> for FrlCeilingCheck {
-    fn name(&self) -> &'static str {
+    fn display_name(&self) -> &'static str {
         "frl_ceiling"
     }
 
