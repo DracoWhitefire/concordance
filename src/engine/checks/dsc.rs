@@ -16,7 +16,7 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for DscCheck {
         sink: &SinkCapabilities,
         source: &SourceCapabilities,
         _cable: &CableCapabilities,
-        config: &CandidateConfig,
+        config: &CandidateConfig<'_>,
     ) -> Option<V> {
         let _ = (sink, source, config);
         // TODO

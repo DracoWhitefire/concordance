@@ -44,7 +44,7 @@ pub trait ConstraintRule<V: Diagnostic> {
         sink: &SinkCapabilities,
         source: &SourceCapabilities,
         cable: &CableCapabilities,
-        config: &CandidateConfig,
+        config: &CandidateConfig<'_>,
     ) -> Option<V>;
 }
 
@@ -94,7 +94,7 @@ where
         sink: &SinkCapabilities,
         source: &SourceCapabilities,
         cable: &CableCapabilities,
-        config: &CandidateConfig,
+        config: &CandidateConfig<'_>,
     ) -> Option<V> {
         self.base
             .check(sink, source, cable, config)
@@ -122,7 +122,7 @@ where
         sink: &SinkCapabilities,
         source: &SourceCapabilities,
         cable: &CableCapabilities,
-        config: &CandidateConfig,
+        config: &CandidateConfig<'_>,
     ) -> CheckResult<Self::Warning, Self::Violation> {
         #[cfg(any(feature = "alloc", feature = "std"))]
         {

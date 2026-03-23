@@ -24,7 +24,7 @@ pub fn is_config_viable(
     sink: &SinkCapabilities,
     source: &SourceCapabilities,
     cable: &CableCapabilities,
-    config: &CandidateConfig,
+    config: &CandidateConfig<'_>,
 ) -> crate::engine::CheckResult<Warning, Violation> {
     DefaultConstraintEngine::default().check(sink, source, cable, config)
 }
