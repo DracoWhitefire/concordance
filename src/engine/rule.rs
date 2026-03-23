@@ -100,7 +100,8 @@ where
 ///
 /// Runs the base engine first, then the extra rule. With alloc, violations from
 /// both are collected. Without alloc, the base engine short-circuits on its first
-/// violation before the extra rule is reached.
+/// violation before the extra rule is reached; any warnings accumulated by the base
+/// are propagated through.
 impl<E, R> super::ConstraintEngine for Layered<E, R>
 where
     E: super::ConstraintEngine,
@@ -109,7 +110,6 @@ where
     type Warning = E::Warning;
     type Violation = E::Violation;
 
-    #[cfg(any(feature = "alloc", feature = "std"))]
     fn check(
         &self,
         sink: &SinkCapabilities,
@@ -117,35 +117,31 @@ where
         cable: &CableCapabilities,
         config: &CandidateConfig,
     ) -> CheckResult<Self::Warning, Self::Violation> {
-        match self.base.check(sink, source, cable, config) {
-            Err(mut violations) => {
-                if let Some(v) = self.extra.check(sink, source, cable, config) {
-                    violations.push(v);
+        #[cfg(any(feature = "alloc", feature = "std"))]
+        {
+            match self.base.check(sink, source, cable, config) {
+                Err(mut violations) => {
+                    if let Some(v) = self.extra.check(sink, source, cable, config) {
+                        violations.push(v);
+                    }
+                    Err(violations)
                 }
-                Err(violations)
-            }
-            Ok(warnings) => {
-                if let Some(v) = self.extra.check(sink, source, cable, config) {
-                    Err(vec![v])
-                } else {
-                    Ok(warnings)
+                Ok(warnings) => {
+                    if let Some(v) = self.extra.check(sink, source, cable, config) {
+                        Err(vec![v])
+                    } else {
+                        Ok(warnings)
+                    }
                 }
             }
         }
-    }
-
-    #[cfg(not(any(feature = "alloc", feature = "std")))]
-    fn check(
-        &self,
-        sink: &SinkCapabilities,
-        source: &SourceCapabilities,
-        cable: &CableCapabilities,
-        config: &CandidateConfig,
-    ) -> CheckResult<Self::Violation> {
-        self.base.check(sink, source, cable, config)?;
-        if let Some(v) = self.extra.check(sink, source, cable, config) {
-            return Err(v);
+        #[cfg(not(any(feature = "alloc", feature = "std")))]
+        {
+            let warnings = self.base.check(sink, source, cable, config)?;
+            if let Some(v) = self.extra.check(sink, source, cable, config) {
+                return Err(v);
+            }
+            Ok(warnings)
         }
-        Ok(())
     }
 }
