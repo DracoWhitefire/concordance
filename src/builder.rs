@@ -33,7 +33,7 @@ pub struct NegotiatorBuilder<E = DefaultConstraintEngine, En = DefaultEnumerator
 impl Default for NegotiatorBuilder {
     fn default() -> Self {
         Self {
-            engine: DefaultConstraintEngine,
+            engine: DefaultConstraintEngine::default(),
             enumerator: DefaultEnumerator,
             ranker: DefaultRanker,
             policy: NegotiationPolicy::default(),

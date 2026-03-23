@@ -2,7 +2,8 @@ use crate::engine::rule::ConstraintRule;
 use crate::output::warning::Violation;
 use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
 
-pub(in crate::engine) struct DscCheck;
+/// Checks DSC consistency: if DSC is enabled, both sink and source must declare support.
+pub struct DscCheck;
 
 impl ConstraintRule<Violation> for DscCheck {
     fn display_name(&self) -> &'static str {

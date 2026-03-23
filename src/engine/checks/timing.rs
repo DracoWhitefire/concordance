@@ -2,7 +2,8 @@ use crate::engine::rule::ConstraintRule;
 use crate::output::warning::Violation;
 use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
 
-pub(in crate::engine) struct RefreshRateCheck;
+/// Checks that the requested refresh rate falls within the sink's supported range.
+pub struct RefreshRateCheck;
 
 impl ConstraintRule<Violation> for RefreshRateCheck {
     fn display_name(&self) -> &'static str {
@@ -22,7 +23,10 @@ impl ConstraintRule<Violation> for RefreshRateCheck {
     }
 }
 
-pub(in crate::engine) struct TmdsClockCheck;
+/// Checks that the TMDS character rate does not exceed the ceiling for the link.
+///
+/// Skipped when `config.pixel_clock_khz` is `None`.
+pub struct TmdsClockCheck;
 
 impl ConstraintRule<Violation> for TmdsClockCheck {
     fn display_name(&self) -> &'static str {
