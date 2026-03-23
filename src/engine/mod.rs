@@ -81,23 +81,10 @@ impl ConstraintEngine for DefaultConstraintEngine {
     ) -> CheckResult<Self::Warning, Self::Violation> {
         let mut violations = Vec::new();
 
-        if let Some(v) = checks::check_frl_ceiling(sink, source, cable, config) {
-            violations.push(v);
-        }
-        if let Some(v) = checks::check_refresh_rate_range(sink, config) {
-            violations.push(v);
-        }
-        if let Some(v) = checks::check_tmds_clock_ceiling(sink, source, cable, config) {
-            violations.push(v);
-        }
-        if let Some(v) = checks::check_color_encoding(sink, config) {
-            violations.push(v);
-        }
-        if let Some(v) = checks::check_bit_depth(sink, config) {
-            violations.push(v);
-        }
-        if let Some(v) = checks::check_dsc(sink, source, config) {
-            violations.push(v);
+        for rule in checks::DEFAULT_CHECKS {
+            if let Some(v) = rule.check(sink, source, cable, config) {
+                violations.push(v);
+            }
         }
 
         if violations.is_empty() {
@@ -115,25 +102,11 @@ impl ConstraintEngine for DefaultConstraintEngine {
         cable: &CableCapabilities,
         config: &CandidateConfig,
     ) -> CheckResult<Self::Violation> {
-        if let Some(v) = checks::check_frl_ceiling(sink, source, cable, config) {
-            return Err(v);
+        for rule in checks::DEFAULT_CHECKS {
+            if let Some(v) = rule.check(sink, source, cable, config) {
+                return Err(v);
+            }
         }
-        if let Some(v) = checks::check_refresh_rate_range(sink, config) {
-            return Err(v);
-        }
-        if let Some(v) = checks::check_tmds_clock_ceiling(sink, source, cable, config) {
-            return Err(v);
-        }
-        if let Some(v) = checks::check_color_encoding(sink, config) {
-            return Err(v);
-        }
-        if let Some(v) = checks::check_bit_depth(sink, config) {
-            return Err(v);
-        }
-        if let Some(v) = checks::check_dsc(sink, source, config) {
-            return Err(v);
-        }
-
         Ok(())
     }
 }
