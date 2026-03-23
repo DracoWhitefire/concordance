@@ -5,7 +5,7 @@ use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceC
 pub(in crate::engine) struct DscCheck;
 
 impl ConstraintRule<Violation> for DscCheck {
-    fn name(&self) -> &'static str {
+    fn display_name(&self) -> &'static str {
         "dsc"
     }
 
