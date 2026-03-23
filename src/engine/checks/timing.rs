@@ -1,3 +1,4 @@
+use crate::diagnostic::Diagnostic;
 use crate::engine::rule::ConstraintRule;
 use crate::output::warning::Violation;
 use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
@@ -5,7 +6,7 @@ use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceC
 /// Checks that the requested refresh rate falls within the sink's supported range.
 pub struct RefreshRateCheck;
 
-impl ConstraintRule<Violation> for RefreshRateCheck {
+impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for RefreshRateCheck {
     fn display_name(&self) -> &'static str {
         "refresh_rate_range"
     }
@@ -16,7 +17,7 @@ impl ConstraintRule<Violation> for RefreshRateCheck {
         _source: &SourceCapabilities,
         _cable: &CableCapabilities,
         config: &CandidateConfig,
-    ) -> Option<Violation> {
+    ) -> Option<V> {
         let _ = (sink, config);
         // TODO
         None
@@ -28,7 +29,7 @@ impl ConstraintRule<Violation> for RefreshRateCheck {
 /// Skipped when `config.pixel_clock_khz` is `None`.
 pub struct TmdsClockCheck;
 
-impl ConstraintRule<Violation> for TmdsClockCheck {
+impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for TmdsClockCheck {
     fn display_name(&self) -> &'static str {
         "tmds_clock_ceiling"
     }
@@ -39,7 +40,7 @@ impl ConstraintRule<Violation> for TmdsClockCheck {
         source: &SourceCapabilities,
         cable: &CableCapabilities,
         config: &CandidateConfig,
-    ) -> Option<Violation> {
+    ) -> Option<V> {
         let _ = (sink, source, cable, config);
         // TODO: requires config.pixel_clock_khz; skip when None
         None

@@ -1,5 +1,6 @@
 use display_types::cea861::HdmiForumFrl;
 
+use crate::diagnostic::Diagnostic;
 use crate::engine::rule::ConstraintRule;
 use crate::output::warning::Violation;
 use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
@@ -29,7 +30,7 @@ pub(in crate::engine) fn frl_tier(rate: HdmiForumFrl) -> u8 {
 /// A sink without an HF-SCDB declares no FRL support and imposes a ceiling of 0.
 pub struct FrlCeilingCheck;
 
-impl ConstraintRule<Violation> for FrlCeilingCheck {
+impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for FrlCeilingCheck {
     fn display_name(&self) -> &'static str {
         "frl_ceiling"
     }
@@ -40,7 +41,7 @@ impl ConstraintRule<Violation> for FrlCeilingCheck {
         source: &SourceCapabilities,
         cable: &CableCapabilities,
         config: &CandidateConfig,
-    ) -> Option<Violation> {
+    ) -> Option<V> {
         if config.frl_rate == HdmiForumFrl::NotSupported {
             return None;
         }
@@ -57,7 +58,7 @@ impl ConstraintRule<Violation> for FrlCeilingCheck {
         let effective_max = sink_max.min(source_max).min(cable_max);
 
         if requested > effective_max {
-            Some(Violation::FrlRateExceeded)
+            Some(Violation::FrlRateExceeded.into())
         } else {
             None
         }
