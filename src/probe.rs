@@ -25,7 +25,7 @@ pub fn is_config_viable(
     cable: &CableCapabilities,
     config: &CandidateConfig,
 ) -> crate::engine::CheckResult<Warning, Violation> {
-    DefaultConstraintEngine.check(sink, source, cable, config)
+    DefaultConstraintEngine::default().check(sink, source, cable, config)
 }
 
 /// Determines whether a specific configuration is viable for the given capabilities (no-alloc).
@@ -36,5 +36,5 @@ pub fn is_config_viable(
     cable: &CableCapabilities,
     config: &CandidateConfig,
 ) -> crate::engine::CheckResult<Violation> {
-    DefaultConstraintEngine.check(sink, source, cable, config)
+    DefaultConstraintEngine::default().check(sink, source, cable, config)
 }

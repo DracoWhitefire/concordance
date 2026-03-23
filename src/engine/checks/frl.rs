@@ -27,7 +27,7 @@ pub(in crate::engine) fn frl_tier(rate: HdmiForumFrl) -> u8 {
 ///
 /// TMDS candidates (`frl_rate == NotSupported`) are not subject to this check.
 /// A sink without an HF-SCDB declares no FRL support and imposes a ceiling of 0.
-pub(in crate::engine) struct FrlCeilingCheck;
+pub struct FrlCeilingCheck;
 
 impl ConstraintRule<Violation> for FrlCeilingCheck {
     fn display_name(&self) -> &'static str {
