@@ -2,7 +2,8 @@ use crate::engine::rule::ConstraintRule;
 use crate::output::warning::Violation;
 use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
 
-pub(in crate::engine) struct ColorEncodingCheck;
+/// Checks that the requested color encoding is supported by the sink.
+pub struct ColorEncodingCheck;
 
 impl ConstraintRule<Violation> for ColorEncodingCheck {
     fn display_name(&self) -> &'static str {
@@ -22,7 +23,8 @@ impl ConstraintRule<Violation> for ColorEncodingCheck {
     }
 }
 
-pub(in crate::engine) struct BitDepthCheck;
+/// Checks that the requested bit depth is supported by the sink.
+pub struct BitDepthCheck;
 
 impl ConstraintRule<Violation> for BitDepthCheck {
     fn display_name(&self) -> &'static str {
