@@ -1,3 +1,4 @@
+use crate::diagnostic::Diagnostic;
 use crate::engine::rule::ConstraintRule;
 use crate::output::warning::Violation;
 use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
@@ -5,7 +6,7 @@ use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceC
 /// Checks that the requested color encoding is supported by the sink.
 pub struct ColorEncodingCheck;
 
-impl ConstraintRule<Violation> for ColorEncodingCheck {
+impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for ColorEncodingCheck {
     fn display_name(&self) -> &'static str {
         "color_encoding"
     }
@@ -16,7 +17,7 @@ impl ConstraintRule<Violation> for ColorEncodingCheck {
         _source: &SourceCapabilities,
         _cable: &CableCapabilities,
         config: &CandidateConfig,
-    ) -> Option<Violation> {
+    ) -> Option<V> {
         let _ = (sink, config);
         // TODO
         None
@@ -26,7 +27,7 @@ impl ConstraintRule<Violation> for ColorEncodingCheck {
 /// Checks that the requested bit depth is supported by the sink.
 pub struct BitDepthCheck;
 
-impl ConstraintRule<Violation> for BitDepthCheck {
+impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for BitDepthCheck {
     fn display_name(&self) -> &'static str {
         "bit_depth"
     }
@@ -37,7 +38,7 @@ impl ConstraintRule<Violation> for BitDepthCheck {
         _source: &SourceCapabilities,
         _cable: &CableCapabilities,
         config: &CandidateConfig,
-    ) -> Option<Violation> {
+    ) -> Option<V> {
         let _ = (sink, config);
         // TODO
         None
