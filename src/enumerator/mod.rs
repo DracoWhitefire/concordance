@@ -14,7 +14,7 @@ use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceC
 /// constraint or ranking logic.
 pub trait CandidateEnumerator {
     /// Iterator type yielding candidate configurations.
-    type Iter<'a>: Iterator<Item = CandidateConfig>
+    type Iter<'a>: Iterator<Item = CandidateConfig<'a>>
     where
         Self: 'a;
 
@@ -35,7 +35,7 @@ pub trait CandidateEnumerator {
 pub struct DefaultEnumerator;
 
 impl CandidateEnumerator for DefaultEnumerator {
-    type Iter<'a> = core::iter::Empty<CandidateConfig>;
+    type Iter<'a> = core::iter::Empty<CandidateConfig<'a>>;
 
     fn enumerate<'a>(
         &'a self,
