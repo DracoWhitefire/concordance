@@ -13,7 +13,7 @@ use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceC
 #[cfg(any(feature = "alloc", feature = "std"))]
 use alloc::vec::Vec;
 
-pub use rule::ConstraintRule;
+pub use rule::{CheckList, ConstraintRule};
 
 /// Maximum number of warnings that can be accumulated in a single constraint check
 /// on no-alloc targets.
@@ -81,7 +81,7 @@ pub trait ConstraintEngine {
 ///     fn from(v: Violation) -> Self { MyViolation::Builtin(v) }
 /// }
 ///
-/// static MY_CHECKS: &[&(dyn ConstraintRule<MyViolation> + Sync)] = &[
+/// static MY_CHECKS: CheckList<MyViolation> = &[
 ///     &FrlCeilingCheck, &TmdsClockCheck, /* ... */ &MyHdrCheck,
 /// ];
 ///
@@ -93,7 +93,7 @@ pub trait ConstraintEngine {
 /// For the common case — built-in violations only — `DefaultConstraintEngine::default()`
 /// uses [`checks::DEFAULT_CHECKS`] and no type annotation is needed.
 pub struct DefaultConstraintEngine<V: 'static = Violation> {
-    checks: &'static [&'static (dyn ConstraintRule<V> + Sync)],
+    checks: CheckList<V>,
 }
 
 /// Uses [`checks::DEFAULT_CHECKS`] as the rule list. Only available for `V = Violation`
@@ -114,15 +114,14 @@ impl<V: Diagnostic> DefaultConstraintEngine<V> {
     ///
     /// ```rust,ignore
     /// use concordance::engine::checks::{FrlCeilingCheck, TmdsClockCheck};
-    /// use concordance::engine::rule::ConstraintRule;
+    /// use concordance::engine::rule::CheckList;
     /// use concordance::output::warning::Violation;
     ///
-    /// static MY_CHECKS: &[&(dyn ConstraintRule<Violation> + Sync)] =
-    ///     &[&FrlCeilingCheck, &TmdsClockCheck];
+    /// static MY_CHECKS: CheckList<Violation> = &[&FrlCeilingCheck, &TmdsClockCheck];
     ///
     /// let engine = DefaultConstraintEngine::with_checks(MY_CHECKS);
     /// ```
-    pub fn with_checks(checks: &'static [&'static (dyn ConstraintRule<V> + Sync)]) -> Self {
+    pub fn with_checks(checks: CheckList<V>) -> Self {
         Self { checks }
     }
 }
