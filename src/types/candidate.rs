@@ -1,7 +1,7 @@
 //! Candidate configuration type used as input to the constraint engine.
 
 use display_types::cea861::HdmiForumFrl;
-use display_types::{ColorBitDepth, DigitalColorEncoding, VideoMode};
+use display_types::{ColorBitDepth, ColorFormat, VideoMode};
 
 /// A specific configuration candidate to be evaluated by the constraint engine.
 ///
@@ -15,7 +15,7 @@ pub struct CandidateConfig {
     pub mode: VideoMode,
 
     /// Color encoding format.
-    pub color_encoding: DigitalColorEncoding,
+    pub color_encoding: ColorFormat,
 
     /// Color bit depth per channel.
     pub bit_depth: ColorBitDepth,
