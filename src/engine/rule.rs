@@ -7,6 +7,13 @@ use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceC
 #[cfg(any(feature = "alloc", feature = "std"))]
 use alloc::vec;
 
+/// A static slice of constraint rules, used as the check list for [`DefaultConstraintEngine`][crate::engine::DefaultConstraintEngine].
+///
+/// The `'static` bound is required to support no-alloc targets, where the slice
+/// must live for the duration of the program. Check sets are always compile-time
+/// concerns; declare yours as a `static` item.
+pub type CheckList<V> = &'static [&'static (dyn ConstraintRule<V> + Sync)];
+
 /// A single constraint check — the unit of extensibility for the constraint engine.
 ///
 /// Unlike [`ConstraintEngine`][crate::engine::ConstraintEngine], which coordinates a
