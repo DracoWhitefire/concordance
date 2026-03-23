@@ -2,9 +2,7 @@
 
 use crate::engine::ConstraintEngine;
 use crate::engine::DefaultConstraintEngine;
-use crate::output::warning::Violation;
-#[cfg(any(feature = "alloc", feature = "std"))]
-use crate::output::warning::Warning;
+use crate::output::warning::{Violation, Warning};
 use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
 
 /// Determines whether a specific configuration is viable for the given capabilities.
@@ -16,25 +14,17 @@ use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceC
 /// that cannot afford allocation or iteration use this function directly. The ranked
 /// iterator is built on top of this primitive.
 ///
+/// On alloc targets, returns all accumulated warnings on success and all violations
+/// on failure. On no-alloc targets, returns up to [`crate::engine::MAX_WARNINGS`]
+/// warnings on success and the first violation on failure.
+///
 /// Callers without cable information may pass [`CableCapabilities::unconstrained()`]
 /// to recover the previous optimistic behavior.
-#[cfg(any(feature = "alloc", feature = "std"))]
 pub fn is_config_viable(
     sink: &SinkCapabilities,
     source: &SourceCapabilities,
     cable: &CableCapabilities,
     config: &CandidateConfig,
 ) -> crate::engine::CheckResult<Warning, Violation> {
-    DefaultConstraintEngine::default().check(sink, source, cable, config)
-}
-
-/// Determines whether a specific configuration is viable for the given capabilities (no-alloc).
-#[cfg(not(any(feature = "alloc", feature = "std")))]
-pub fn is_config_viable(
-    sink: &SinkCapabilities,
-    source: &SourceCapabilities,
-    cable: &CableCapabilities,
-    config: &CandidateConfig,
-) -> crate::engine::CheckResult<Violation> {
     DefaultConstraintEngine::default().check(sink, source, cable, config)
 }
