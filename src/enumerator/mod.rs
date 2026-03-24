@@ -240,9 +240,14 @@ impl<'modes> CandidateEnumerator for SliceEnumerator<'modes> {
 ///
 /// Generates the full Cartesian product of supported modes, color encodings,
 /// bit depths, and FRL tiers implied by the capability triple.
+///
+/// Available in `alloc` and `std` tiers only. For bare `no_std` targets use
+/// [`SliceEnumerator`] with an explicit mode slice.
+#[cfg(any(feature = "alloc", feature = "std"))]
 #[derive(Debug, Default)]
 pub struct DefaultEnumerator;
 
+#[cfg(any(feature = "alloc", feature = "std"))]
 impl CandidateEnumerator for DefaultEnumerator {
     type Iter<'a> = EnumeratorIter<'a>;
 
@@ -256,7 +261,7 @@ impl CandidateEnumerator for DefaultEnumerator {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(feature = "alloc", feature = "std")))]
 mod tests {
     use super::*;
     use display_types::cea861::{HdmiDscMaxSlices, HdmiForumDsc, HdmiForumSinkCap};
@@ -512,11 +517,14 @@ mod tests {
         // canonical order: Rgb444, YCbCr444, YCbCr422, YCbCr420 (encoding is the
         // second-slowest dimension, changing once per full depth×frl×dsc block).
         let mut caps = display_types::ColorCapabilities::default();
-        caps.rgb444   = ColorBitDepths::BPC_8;
+        caps.rgb444 = ColorBitDepths::BPC_8;
         caps.ycbcr444 = ColorBitDepths::BPC_8;
         caps.ycbcr422 = ColorBitDepths::BPC_8;
         caps.ycbcr420 = ColorBitDepths::BPC_8;
-        let sink = SinkCapabilities { color_capabilities: caps, ..Default::default() };
+        let sink = SinkCapabilities {
+            color_capabilities: caps,
+            ..Default::default()
+        };
         let modes = [mode(60)];
         let source = SourceCapabilities::default();
         let cable = CableCapabilities::default();
