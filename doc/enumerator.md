@@ -112,10 +112,10 @@ per-candidate. Three axes are pre-filtered against the capability triple:
 sink.color_capabilities.for_format(enc).is_nonempty()
 ```
 
-**Bit depths** — include the union of all depths supported by the sink across any
-encoding. A candidate combining an encoding with an unsupported depth will be cheaply
-rejected by `BitDepthCheck`; the minor over-enumeration avoids per-encoding depth arrays
-in the iterator state.
+**Bit depths** — for each color encoding, include only the depths the sink declares for
+that encoding (`sink.color_capabilities.for_format(enc).depths()`). This is stored as
+a per-encoding array in the iterator; the depth bound changes when the encoding index
+advances.
 
 **FRL rates** — include only tiers ≤ `min(source_ceil, sink_ceil, cable_ceil)`, plus
 `NotSupported` (TMDS) always. This avoids generating large numbers of candidates that
@@ -135,11 +135,11 @@ All dimension arrays are fixed-size and stored inline.
 
 ```rust
 pub struct EnumeratorIter<'a> {
-    modes:    &'a [VideoMode],
-    encodings: [ColorFormat; 4],  enc_len: usize,
-    depths:    [ColorBitDepth; 4], dep_len: usize,
-    frl_rates: [HdmiForumFrl; 7], frl_len: usize,
-    dsc:       [bool; 2],          dsc_len: usize,
+    modes:     &'a [VideoMode],
+    encodings: [ColorFormat; 4],        enc_len:  usize,
+    depths:    [[ColorBitDepth; 4]; 4], dep_lens: [usize; 4],
+    frl_rates: [HdmiForumFrl; 7],       frl_len:  usize,
+    dsc:       [bool; 2],               dsc_len:  usize,
 
     // current position (odometer, rightmost index is innermost)
     mode_idx: usize,
@@ -153,6 +153,10 @@ pub struct EnumeratorIter<'a> {
 `Iterator::next()` advances the innermost index first, carrying into the next index when
 it wraps, exactly like an odometer. When `mode_idx == modes.len()` the iterator is
 exhausted.
+
+The depth bound for the current position is `dep_lens[enc_idx]`; when `enc_idx` advances,
+`dep_idx` resets to 0 and the new bound applies automatically. This means only valid
+`(encoding, depth)` pairs are ever emitted.
 
 The candidate borrows `&self.modes[mode_idx]` directly — no copy until acceptance in
 `NegotiatedConfig`.
