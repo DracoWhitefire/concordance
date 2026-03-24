@@ -53,7 +53,6 @@ pub struct SinkCapabilities {
     pub colorimetry: Option<ColorimetryBlock>,
 }
 
-
 /// Derives [`SinkCapabilities`] from a parsed [`DisplayCapabilities`][display_types::DisplayCapabilities].
 ///
 /// Extracts all fields that can be determined from the parsed EDID data, including

@@ -56,3 +56,97 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for TmdsClockCheck {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::rule::ConstraintRule;
+    use crate::output::warning::Violation;
+    use crate::types::{CableCapabilities, CandidateConfig, SourceCapabilities};
+    use display_types::cea861::HdmiForumFrl;
+    use display_types::{ColorBitDepth, ColorFormat, VideoMode};
+
+    fn mode(refresh_rate: u8) -> VideoMode {
+        VideoMode::new(1920, 1080, refresh_rate, false)
+    }
+
+    fn config(mode: &VideoMode) -> CandidateConfig<'_> {
+        CandidateConfig {
+            mode,
+            color_encoding: ColorFormat::Rgb444,
+            bit_depth: ColorBitDepth::Depth8,
+            frl_rate: HdmiForumFrl::NotSupported,
+            dsc_enabled: false,
+        }
+    }
+
+    fn check(sink: &SinkCapabilities, mode: &VideoMode) -> Option<Violation> {
+        ConstraintRule::<Violation>::check(
+            &RefreshRateCheck,
+            sink,
+            &SourceCapabilities::default(),
+            &CableCapabilities::default(),
+            &config(mode),
+        )
+    }
+
+    #[test]
+    fn within_range_passes() {
+        let sink = SinkCapabilities {
+            min_v_rate: Some(24),
+            max_v_rate: Some(144),
+            ..Default::default()
+        };
+        assert!(check(&sink, &mode(60)).is_none());
+    }
+
+    #[test]
+    fn above_max_rejected() {
+        let sink = SinkCapabilities {
+            min_v_rate: Some(24),
+            max_v_rate: Some(60),
+            ..Default::default()
+        };
+        assert!(matches!(
+            check(&sink, &mode(144)),
+            Some(Violation::RefreshRateOutOfRange {
+                rate_hz: 144,
+                min_hz: 24,
+                max_hz: 60
+            })
+        ));
+    }
+
+    #[test]
+    fn below_min_rejected() {
+        let sink = SinkCapabilities {
+            min_v_rate: Some(48),
+            max_v_rate: Some(144),
+            ..Default::default()
+        };
+        assert!(matches!(
+            check(&sink, &mode(24)),
+            Some(Violation::RefreshRateOutOfRange {
+                rate_hz: 24,
+                min_hz: 48,
+                max_hz: 144
+            })
+        ));
+    }
+
+    #[test]
+    fn no_bounds_skips_check() {
+        assert!(check(&SinkCapabilities::default(), &mode(240)).is_none());
+    }
+
+    #[test]
+    fn at_boundary_passes() {
+        let sink = SinkCapabilities {
+            min_v_rate: Some(24),
+            max_v_rate: Some(144),
+            ..Default::default()
+        };
+        assert!(check(&sink, &mode(24)).is_none());
+        assert!(check(&sink, &mode(144)).is_none());
+    }
+}
