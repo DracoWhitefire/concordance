@@ -152,3 +152,183 @@ where
         }
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagnostic::Diagnostic;
+    use crate::engine::{ConstraintEngine, DefaultConstraintEngine};
+    use crate::output::warning::Violation;
+    use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
+    use display_types::cea861::HdmiForumFrl;
+    use display_types::{ColorBitDepth, ColorFormat, VideoMode};
+
+    fn mode() -> VideoMode {
+        VideoMode::new(1920, 1080, 60, false)
+    }
+
+    fn config(mode: &VideoMode) -> CandidateConfig<'_> {
+        CandidateConfig {
+            mode,
+            color_encoding: ColorFormat::Rgb444,
+            bit_depth: ColorBitDepth::Depth8,
+            frl_rate: HdmiForumFrl::NotSupported,
+            dsc_enabled: false,
+        }
+    }
+
+    fn sink() -> SinkCapabilities {
+        SinkCapabilities::default()
+    }
+    fn source() -> SourceCapabilities {
+        SourceCapabilities::default()
+    }
+    fn cable() -> CableCapabilities {
+        CableCapabilities::default()
+    }
+
+    struct AlwaysPass;
+    struct FailEncoding;
+    struct FailDepth;
+
+    impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for AlwaysPass {
+        fn display_name(&self) -> &'static str {
+            "always_pass"
+        }
+        fn check(
+            &self,
+            _: &SinkCapabilities,
+            _: &SourceCapabilities,
+            _: &CableCapabilities,
+            _: &CandidateConfig<'_>,
+        ) -> Option<V> {
+            None
+        }
+    }
+
+    impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for FailEncoding {
+        fn display_name(&self) -> &'static str {
+            "fail_encoding"
+        }
+        fn check(
+            &self,
+            _: &SinkCapabilities,
+            _: &SourceCapabilities,
+            _: &CableCapabilities,
+            _: &CandidateConfig<'_>,
+        ) -> Option<V> {
+            Some(Violation::ColorEncodingUnsupported.into())
+        }
+    }
+
+    impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for FailDepth {
+        fn display_name(&self) -> &'static str {
+            "fail_depth"
+        }
+        fn check(
+            &self,
+            _: &SinkCapabilities,
+            _: &SourceCapabilities,
+            _: &CableCapabilities,
+            _: &CandidateConfig<'_>,
+        ) -> Option<V> {
+            Some(Violation::BitDepthUnsupported.into())
+        }
+    }
+
+    // --- Layered<R1, R2> as ConstraintRule ---
+
+    #[test]
+    fn layered_rule_both_pass() {
+        let m = mode();
+        let rule = Layered::new(AlwaysPass, AlwaysPass);
+        let result =
+            ConstraintRule::<Violation>::check(&rule, &sink(), &source(), &cable(), &config(&m));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn layered_rule_base_fails_short_circuits() {
+        let m = mode();
+        // Base returns ColorEncodingUnsupported; extra would return BitDepthUnsupported.
+        // Only the base violation should be present since or_else short-circuits.
+        let rule = Layered::new(FailEncoding, FailDepth);
+        let result =
+            ConstraintRule::<Violation>::check(&rule, &sink(), &source(), &cable(), &config(&m));
+        assert!(matches!(result, Some(Violation::ColorEncodingUnsupported)));
+    }
+
+    #[test]
+    fn layered_rule_base_passes_extra_fails() {
+        let m = mode();
+        let rule = Layered::new(AlwaysPass, FailDepth);
+        let result =
+            ConstraintRule::<Violation>::check(&rule, &sink(), &source(), &cable(), &config(&m));
+        assert!(matches!(result, Some(Violation::BitDepthUnsupported)));
+    }
+
+    // --- Layered<E, R> as ConstraintEngine ---
+
+    fn empty_engine() -> DefaultConstraintEngine<Violation> {
+        DefaultConstraintEngine::with_checks(&[])
+    }
+
+    #[test]
+    fn layered_engine_both_pass() {
+        let m = mode();
+        let engine = Layered::new(empty_engine(), AlwaysPass);
+        assert!(
+            engine
+                .check(&sink(), &source(), &cable(), &config(&m))
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn layered_engine_base_passes_extra_fails() {
+        let m = mode();
+        let engine = Layered::new(empty_engine(), FailDepth);
+        let violations = engine
+            .check(&sink(), &source(), &cable(), &config(&m))
+            .unwrap_err();
+        assert!(
+            violations
+                .iter()
+                .any(|v| matches!(v, Violation::BitDepthUnsupported))
+        );
+    }
+
+    #[test]
+    fn layered_engine_base_fails_extra_violation_also_collected() {
+        let m = mode();
+        // Base engine with ColorEncodingCheck; default sink → no color caps → fires.
+        static BASE_RULES: &[&(dyn ConstraintRule<Violation> + Sync)] =
+            &[&crate::engine::checks::ColorEncodingCheck];
+        let engine = Layered::new(DefaultConstraintEngine::with_checks(BASE_RULES), FailDepth);
+        let violations = engine
+            .check(&sink(), &source(), &cable(), &config(&m))
+            .unwrap_err();
+        assert!(
+            violations
+                .iter()
+                .any(|v| matches!(v, Violation::ColorEncodingUnsupported))
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|v| matches!(v, Violation::BitDepthUnsupported))
+        );
+    }
+
+    #[test]
+    fn layered_engine_base_fails_extra_passes_only_base_violations() {
+        let m = mode();
+        static BASE_RULES: &[&(dyn ConstraintRule<Violation> + Sync)] =
+            &[&crate::engine::checks::ColorEncodingCheck];
+        let engine = Layered::new(DefaultConstraintEngine::with_checks(BASE_RULES), AlwaysPass);
+        let violations = engine
+            .check(&sink(), &source(), &cable(), &config(&m))
+            .unwrap_err();
+        assert_eq!(violations.len(), 1);
+        assert!(matches!(violations[0], Violation::ColorEncodingUnsupported));
+    }
+}
