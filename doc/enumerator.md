@@ -106,11 +106,16 @@ around 640 candidates — well within the constraint engine's per-candidate cost
 The enumerator computes its dimension arrays once when `enumerate()` is called, not
 per-candidate. Three axes are pre-filtered against the capability triple:
 
-**Color encodings** — include only those where the sink declares at least one bit depth:
+**Color encodings** — include only those where the sink declares at least one depth in
+the candidate set `[Depth8, Depth10, Depth12, Depth16]`:
 
 ```rust
-sink.color_capabilities.for_format(enc).is_nonempty()
+ALL_DEPTHS.iter().any(|&d| sink.color_capabilities.for_format(enc).supports(d))
 ```
+
+This is stricter than a plain `is_nonempty()` check: an encoding that only declares
+`Depth6` or `Depth14` (outside the candidate set) is excluded rather than included
+with an empty depth array.
 
 **Bit depths** — for each color encoding, include only the depths the sink declares for
 that encoding (`sink.color_capabilities.for_format(enc).depths()`). This is stored as
