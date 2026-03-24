@@ -119,7 +119,8 @@ advances.
 
 **FRL rates** — include only tiers ≤ `min(source_ceil, sink_ceil, cable_ceil)`, plus
 `NotSupported` (TMDS) always. This avoids generating large numbers of candidates that
-`FrlCeilingCheck` would immediately reject.
+`FrlCeilingCheck` would immediately reject. The array is stored **highest tier first**
+so that the ranker encounters the best bandwidth candidates before lower ones.
 
 **DSC** — include `true` only when both source and sink support DSC (`dsc_1p2`). When
 DSC is unavailable, the `dsc_enabled = false` dimension collapses to a single element.
@@ -166,7 +167,7 @@ The candidate borrows `&self.modes[mode_idx]` directly — no copy until accepta
 Candidates are produced in the following order (first dimension changes slowest):
 
 ```
-mode[0] × encoding[0] × depth[0] × frl[0] × dsc[0]
+mode[0] × encoding[0] × depth[0] × frl[0] × dsc[0]   ← frl[0] = highest qualifying tier
 mode[0] × encoding[0] × depth[0] × frl[0] × dsc[1]
 mode[0] × encoding[0] × depth[0] × frl[1] × dsc[0]
 …
@@ -175,8 +176,9 @@ mode[0] × encoding[0] × depth[1] × …
 mode[1] × …
 ```
 
-This order ensures all candidates for a given mode are emitted consecutively, which is
-cache-friendly and easy to reason about in traces.
+All candidates for a given mode are emitted consecutively (cache-friendly, easy to
+trace). Within each `(mode, encoding, depth)` group, higher FRL tiers appear before
+lower ones, so the ranker sees the best-bandwidth candidates first.
 
 ## Mode list deduplication
 
