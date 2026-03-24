@@ -125,6 +125,10 @@ so that the ranker encounters the best bandwidth candidates before lower ones.
 **DSC** — include `true` only when both source and sink support DSC (`dsc_1p2`). When
 DSC is unavailable, the `dsc_enabled = false` dimension collapses to a single element.
 
+If `enc_len == 0` after filtering (the sink declares no usable color capabilities),
+`enumerate()` constructs the iterator with `mode_idx = modes.len()`, making it
+immediately exhausted. No special-casing is needed in `next()`.
+
 This pre-filtering is a performance optimisation, not a policy decision. The constraint
 engine remains authoritative: every candidate the enumerator emits is subject to the full
 check list. Pre-filtering cannot cause a viable candidate to be silently skipped.
@@ -153,7 +157,8 @@ pub struct EnumeratorIter<'a> {
 
 `Iterator::next()` advances the innermost index first, carrying into the next index when
 it wraps, exactly like an odometer. When `mode_idx == modes.len()` the iterator is
-exhausted.
+exhausted. This sentinel is also set at construction time when any outer dimension is
+empty (see pre-filtering), so `next()` requires no additional empty-dimension checks.
 
 The depth bound for the current position is `dep_lens[enc_idx]`; when `enc_idx` advances,
 `dep_idx` resets to 0 and the new bound applies automatically. This means only valid
