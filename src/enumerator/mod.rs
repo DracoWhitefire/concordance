@@ -244,16 +244,15 @@ impl<'modes> CandidateEnumerator for SliceEnumerator<'modes> {
 pub struct DefaultEnumerator;
 
 impl CandidateEnumerator for DefaultEnumerator {
-    type Iter<'a> = core::iter::Empty<CandidateConfig<'a>>;
+    type Iter<'a> = EnumeratorIter<'a>;
 
     fn enumerate<'a>(
         &'a self,
-        _sink: &'a SinkCapabilities,
-        _source: &'a SourceCapabilities,
-        _cable: &'a CableCapabilities,
+        sink: &'a SinkCapabilities,
+        source: &'a SourceCapabilities,
+        cable: &'a CableCapabilities,
     ) -> Self::Iter<'a> {
-        // TODO: implement using build_iter with sink.supported_modes.as_slice()
-        core::iter::empty()
+        build_iter(sink.supported_modes.as_slice(), sink, source, cable)
     }
 }
 
