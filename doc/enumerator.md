@@ -187,22 +187,43 @@ lower ones, so the ranker sees the best-bandwidth candidates first.
 
 ## Mode list deduplication
 
-The enumerator does not deduplicate its input. Responsibility lies with the caller that
-assembles `SinkCapabilities`.
+The enumerator does not deduplicate its input. The invariant is enforced by the
+`SupportedModes` newtype:
+
+```rust
+/// A sorted, deduplicated list of video modes.
+///
+/// Constructed via `SupportedModes::from_vec`, which sorts the input and removes
+/// duplicates. Available in `alloc` and `std` tiers only.
+pub struct SupportedModes(Vec<VideoMode>);
+```
+
+`SinkCapabilities::supported_modes` is of type `SupportedModes`, so any code that
+holds a `SinkCapabilities` is guaranteed a normalised list without having to defend
+against duplicates itself.
 
 Duplicate `VideoMode` entries are a real occurrence: piaf can emit the same timing from
 multiple sources in a single EDID — an established timing, a standard timing, and a CEA
 Video Data Block VIC can all resolve to the same `(width, height, refresh_rate)` tuple.
-`DisplayCapabilities::supported_modes` preserves all of them, and `sink_capabilities_from_display`
-clones that list verbatim.
+When `sink_capabilities_from_display` encounters duplicates it records them in a
+`SinkBuildWarning`:
 
-The correct fix is in `sink_capabilities_from_display`: sort `supported_modes` and
-deduplicate before storing, so every downstream consumer — the enumerator included —
-receives a normalised list. This is cheap (the `Vec` is already owned) and makes the
-invariant unconditional rather than something each consumer has to defend against.
+```rust
+#[non_exhaustive]
+pub enum SinkBuildWarning {
+    /// One or more video modes appeared more than once in the EDID and were removed.
+    DuplicateModes(Vec<VideoMode>),
+    // …future variants
+}
+```
+
+`sink_capabilities_from_display` returns `(SinkCapabilities, Vec<SinkBuildWarning>)`
+so that all construction-time diagnostics share a single channel as new variants are
+added. Callers that do not need the warnings can ignore the second element with
+`let (sink, _) = sink_capabilities_from_display(caps);`.
 
 A custom enumerator that constructs its own mode list is responsible for the same
-invariant.
+invariant and should use `SupportedModes::from_vec` directly.
 
 ## What is out of scope
 
