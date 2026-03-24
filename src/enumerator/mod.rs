@@ -1,4 +1,7 @@
-//! Candidate enumerator trait and default implementation.
+//! Candidate enumerator trait and implementations.
+
+use display_types::cea861::HdmiForumFrl;
+use display_types::{ColorBitDepth, ColorFormat, VideoMode};
 
 use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
 
@@ -27,6 +30,212 @@ pub trait CandidateEnumerator {
     ) -> Self::Iter<'a>;
 }
 
+/// Lazy iterator over the Cartesian product of modes × encodings × depths × FRL rates × DSC.
+///
+/// Advances like an odometer: the rightmost (innermost) dimension changes fastest.
+/// All state is stored inline — no heap allocation.
+#[derive(Debug)]
+pub struct EnumeratorIter<'a> {
+    modes: &'a [VideoMode],
+    encodings: [ColorFormat; 4],
+    enc_len: usize,
+    depths: [[ColorBitDepth; 4]; 4],
+    dep_lens: [usize; 4],
+    frl_rates: [HdmiForumFrl; 7],
+    frl_len: usize,
+    dsc: [bool; 2],
+    dsc_len: usize,
+
+    mode_idx: usize,
+    enc_idx: usize,
+    dep_idx: usize,
+    frl_idx: usize,
+    dsc_idx: usize,
+}
+
+impl<'a> Iterator for EnumeratorIter<'a> {
+    type Item = CandidateConfig<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.mode_idx >= self.modes.len() {
+            return None;
+        }
+
+        let candidate = CandidateConfig {
+            mode: &self.modes[self.mode_idx],
+            color_encoding: self.encodings[self.enc_idx],
+            bit_depth: self.depths[self.enc_idx][self.dep_idx],
+            frl_rate: self.frl_rates[self.frl_idx],
+            dsc_enabled: self.dsc[self.dsc_idx],
+        };
+
+        // Advance odometer, innermost (dsc) first.
+        self.dsc_idx += 1;
+        if self.dsc_idx < self.dsc_len {
+            return Some(candidate);
+        }
+        self.dsc_idx = 0;
+
+        self.frl_idx += 1;
+        if self.frl_idx < self.frl_len {
+            return Some(candidate);
+        }
+        self.frl_idx = 0;
+
+        self.dep_idx += 1;
+        if self.dep_idx < self.dep_lens[self.enc_idx] {
+            return Some(candidate);
+        }
+        self.dep_idx = 0;
+
+        self.enc_idx += 1;
+        if self.enc_idx < self.enc_len {
+            return Some(candidate);
+        }
+        self.enc_idx = 0;
+
+        self.mode_idx += 1;
+        Some(candidate)
+    }
+}
+
+/// Constructs an [`EnumeratorIter`] from a mode slice and capability triple.
+fn build_iter<'a>(
+    modes: &'a [VideoMode],
+    sink: &SinkCapabilities,
+    source: &SourceCapabilities,
+    cable: &CableCapabilities,
+) -> EnumeratorIter<'a> {
+    const ALL_FORMATS: [ColorFormat; 4] = [
+        ColorFormat::Rgb444,
+        ColorFormat::YCbCr444,
+        ColorFormat::YCbCr422,
+        ColorFormat::YCbCr420,
+    ];
+    const ALL_DEPTHS: [ColorBitDepth; 4] = [
+        ColorBitDepth::Depth8,
+        ColorBitDepth::Depth10,
+        ColorBitDepth::Depth12,
+        ColorBitDepth::Depth16,
+    ];
+    const ALL_FRL_DESC: [HdmiForumFrl; 7] = [
+        HdmiForumFrl::Rate12Gbps4Lanes,
+        HdmiForumFrl::Rate10Gbps4Lanes,
+        HdmiForumFrl::Rate8Gbps4Lanes,
+        HdmiForumFrl::Rate6Gbps4Lanes,
+        HdmiForumFrl::Rate6Gbps3Lanes,
+        HdmiForumFrl::Rate3Gbps3Lanes,
+        HdmiForumFrl::NotSupported,
+    ];
+
+    // Color encodings: include those that have at least one depth in ALL_DEPTHS.
+    let mut encodings = [ColorFormat::Rgb444; 4];
+    let mut enc_len = 0usize;
+    for &fmt in &ALL_FORMATS {
+        let supported = sink.color_capabilities.for_format(fmt);
+        if ALL_DEPTHS.iter().any(|&d| supported.supports(d)) {
+            encodings[enc_len] = fmt;
+            enc_len += 1;
+        }
+    }
+
+    // Bit depths per encoding.
+    let mut depths = [[ColorBitDepth::Depth8; 4]; 4];
+    let mut dep_lens = [0usize; 4];
+    for i in 0..enc_len {
+        let supported = sink.color_capabilities.for_format(encodings[i]);
+        let mut d = 0usize;
+        for &depth in &ALL_DEPTHS {
+            if supported.supports(depth) {
+                depths[i][d] = depth;
+                d += 1;
+            }
+        }
+        dep_lens[i] = d;
+    }
+
+    // FRL rates: highest qualifying tier first; NotSupported (TMDS) always included.
+    let sink_frl_ceil = sink
+        .hdmi_forum
+        .as_ref()
+        .map_or(HdmiForumFrl::NotSupported, |hf| hf.max_frl_rate);
+    let effective_ceil = sink_frl_ceil
+        .min(source.max_frl_rate)
+        .min(cable.max_frl_rate);
+    let mut frl_rates = [HdmiForumFrl::NotSupported; 7];
+    let mut frl_len = 0usize;
+    for &rate in &ALL_FRL_DESC {
+        if rate <= effective_ceil {
+            frl_rates[frl_len] = rate;
+            frl_len += 1;
+        }
+    }
+
+    // DSC: include true only when both source and sink support DSC 1.2.
+    let dsc_supported = source.dsc.is_some_and(|d| d.dsc_1p2)
+        && sink
+            .hdmi_forum
+            .as_ref()
+            .is_some_and(|hf| hf.dsc.as_ref().is_some_and(|d| d.dsc_1p2));
+    let dsc_len = if dsc_supported { 2 } else { 1 };
+
+    // If no usable encoding exists, set the exhausted sentinel immediately.
+    let mode_idx = if enc_len == 0 { modes.len() } else { 0 };
+
+    EnumeratorIter {
+        modes,
+        encodings,
+        enc_len,
+        depths,
+        dep_lens,
+        frl_rates,
+        frl_len,
+        dsc: [false, true],
+        dsc_len,
+        mode_idx,
+        enc_idx: 0,
+        dep_idx: 0,
+        frl_idx: 0,
+        dsc_idx: 0,
+    }
+}
+
+/// Candidate enumerator backed by a caller-supplied mode slice.
+///
+/// The caller provides the mode list at construction time. This is the right
+/// choice for embedded targets and for tests that want a controlled mode set.
+///
+/// ```rust,ignore
+/// let enumerator = SliceEnumerator::new(sink.supported_modes.as_slice());
+/// ```
+#[derive(Debug)]
+pub struct SliceEnumerator<'modes> {
+    modes: &'modes [VideoMode],
+}
+
+impl<'modes> SliceEnumerator<'modes> {
+    /// Creates a new enumerator over the given mode slice.
+    pub fn new(modes: &'modes [VideoMode]) -> Self {
+        Self { modes }
+    }
+}
+
+impl<'modes> CandidateEnumerator for SliceEnumerator<'modes> {
+    type Iter<'a>
+        = EnumeratorIter<'a>
+    where
+        Self: 'a;
+
+    fn enumerate<'a>(
+        &'a self,
+        sink: &'a SinkCapabilities,
+        source: &'a SourceCapabilities,
+        cable: &'a CableCapabilities,
+    ) -> Self::Iter<'a> {
+        build_iter(self.modes, sink, source, cable)
+    }
+}
+
 /// Default candidate enumerator.
 ///
 /// Generates the full Cartesian product of supported modes, color encodings,
@@ -43,7 +252,276 @@ impl CandidateEnumerator for DefaultEnumerator {
         _source: &'a SourceCapabilities,
         _cable: &'a CableCapabilities,
     ) -> Self::Iter<'a> {
-        // TODO: implement full candidate enumeration
+        // TODO: implement using build_iter with sink.supported_modes.as_slice()
         core::iter::empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use display_types::cea861::{HdmiDscMaxSlices, HdmiForumDsc, HdmiForumSinkCap};
+    use display_types::{ColorBitDepths, VideoMode};
+
+    fn mode(refresh_rate: u8) -> VideoMode {
+        VideoMode::new(1920, 1080, refresh_rate, false)
+    }
+
+    /// Minimal `HdmiForumSinkCap` with just an FRL ceiling set.
+    fn hf_sink(max_frl_rate: HdmiForumFrl) -> HdmiForumSinkCap {
+        HdmiForumSinkCap::new(
+            1,
+            0,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            max_frl_rate,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            None,
+            None,
+            None,
+        )
+    }
+
+    /// `HdmiForumSinkCap` with an FRL ceiling and DSC 1.2 support.
+    fn hf_sink_dsc(max_frl_rate: HdmiForumFrl) -> HdmiForumSinkCap {
+        let dsc = HdmiForumDsc::new(
+            true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            HdmiForumFrl::NotSupported,
+            HdmiDscMaxSlices::Slices4,
+            0,
+        );
+        HdmiForumSinkCap::new(
+            1,
+            0,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            max_frl_rate,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            None,
+            None,
+            Some(dsc),
+        )
+    }
+
+    fn rgb8_sink() -> SinkCapabilities {
+        let mut caps = display_types::ColorCapabilities::default();
+        caps.rgb444 = ColorBitDepths::BPC_8;
+        SinkCapabilities {
+            color_capabilities: caps,
+            ..Default::default()
+        }
+    }
+
+    fn frl6_sink() -> SinkCapabilities {
+        let mut caps = display_types::ColorCapabilities::default();
+        caps.rgb444 = ColorBitDepths::BPC_8;
+        SinkCapabilities {
+            color_capabilities: caps,
+            hdmi_forum: Some(hf_sink(HdmiForumFrl::Rate6Gbps4Lanes)),
+            ..Default::default()
+        }
+    }
+
+    fn frl6_source() -> SourceCapabilities {
+        SourceCapabilities {
+            max_frl_rate: HdmiForumFrl::Rate6Gbps4Lanes,
+            ..Default::default()
+        }
+    }
+
+    fn dsc_sink() -> SinkCapabilities {
+        let mut caps = display_types::ColorCapabilities::default();
+        caps.rgb444 = ColorBitDepths::BPC_8;
+        SinkCapabilities {
+            color_capabilities: caps,
+            hdmi_forum: Some(hf_sink_dsc(HdmiForumFrl::Rate6Gbps4Lanes)),
+            ..Default::default()
+        }
+    }
+
+    fn dsc_source() -> SourceCapabilities {
+        use crate::types::source::DscCapabilities;
+        SourceCapabilities {
+            max_frl_rate: HdmiForumFrl::Rate6Gbps4Lanes,
+            dsc: Some(DscCapabilities {
+                dsc_1p2: true,
+                max_slices: 4,
+                max_bpp_x16: 128,
+            }),
+            ..Default::default()
+        }
+    }
+
+    fn collect_from<'a>(
+        modes: &'a [VideoMode],
+        sink: &'a SinkCapabilities,
+        source: &'a SourceCapabilities,
+        cable: &'a CableCapabilities,
+    ) -> alloc::vec::Vec<CandidateConfig<'a>> {
+        build_iter(modes, sink, source, cable).collect()
+    }
+
+    #[test]
+    fn empty_mode_list_yields_nothing() {
+        let sink = rgb8_sink();
+        let source = SourceCapabilities::default();
+        let cable = CableCapabilities::default();
+        assert!(collect_from(&[], &sink, &source, &cable).is_empty());
+    }
+
+    #[test]
+    fn no_usable_encoding_yields_nothing() {
+        let modes = [mode(60)];
+        let sink = SinkCapabilities::default();
+        let source = SourceCapabilities::default();
+        let cable = CableCapabilities::default();
+        assert!(collect_from(&modes, &sink, &source, &cable).is_empty());
+    }
+
+    #[test]
+    fn tmds_only_single_mode_rgb8() {
+        let modes = [mode(60)];
+        let sink = rgb8_sink();
+        let source = SourceCapabilities::default();
+        let cable = CableCapabilities::default();
+        let candidates = collect_from(&modes, &sink, &source, &cable);
+        // 1 mode × 1 encoding × 1 depth × 1 FRL (NotSupported) × 1 DSC (false)
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].color_encoding, ColorFormat::Rgb444);
+        assert_eq!(candidates[0].bit_depth, ColorBitDepth::Depth8);
+        assert_eq!(candidates[0].frl_rate, HdmiForumFrl::NotSupported);
+        assert!(!candidates[0].dsc_enabled);
+    }
+
+    #[test]
+    fn frl_rates_highest_first() {
+        // RGB 8bpc, FRL ceiling = Rate6Gbps4Lanes → 4 tiers (6g4l, 6g3l, 3g3l, NotSupported).
+        let modes = [mode(60)];
+        let sink = frl6_sink();
+        let source = frl6_source();
+        let cable = CableCapabilities::unconstrained();
+        let candidates = collect_from(&modes, &sink, &source, &cable);
+        let frl_rates: alloc::vec::Vec<_> = candidates.iter().map(|c| c.frl_rate).collect();
+        for i in 1..frl_rates.len() {
+            assert!(
+                frl_rates[i - 1] >= frl_rates[i],
+                "expected descending FRL order at position {i}: {:?} < {:?}",
+                frl_rates[i - 1],
+                frl_rates[i],
+            );
+        }
+    }
+
+    #[test]
+    fn dsc_false_before_true() {
+        let modes = [mode(60)];
+        let sink = dsc_sink();
+        let source = dsc_source();
+        let cable = CableCapabilities::unconstrained();
+        let candidates = collect_from(&modes, &sink, &source, &cable);
+        assert!(
+            !candidates[0].dsc_enabled,
+            "first candidate should have dsc=false"
+        );
+        assert!(
+            candidates[1].dsc_enabled,
+            "second candidate should have dsc=true"
+        );
+    }
+
+    #[test]
+    fn dsc_absent_when_source_lacks_it() {
+        let modes = [mode(60)];
+        let sink = dsc_sink();
+        let source = frl6_source();
+        let cable = CableCapabilities::unconstrained();
+        let candidates = collect_from(&modes, &sink, &source, &cable);
+        assert!(candidates.iter().all(|c| !c.dsc_enabled));
+    }
+
+    #[test]
+    fn dsc_absent_when_sink_lacks_it() {
+        let modes = [mode(60)];
+        let sink = frl6_sink();
+        let source = dsc_source();
+        let cable = CableCapabilities::unconstrained();
+        let candidates = collect_from(&modes, &sink, &source, &cable);
+        assert!(candidates.iter().all(|c| !c.dsc_enabled));
+    }
+
+    #[test]
+    fn candidate_count_matches_product() {
+        // RGB only, 8+10 bpc, FRL ceiling = Rate6Gbps4Lanes (4 tiers), no DSC.
+        // Expected: 2 modes × 1 encoding × 2 depths × 4 FRL rates × 1 DSC = 16.
+        let mut caps = display_types::ColorCapabilities::default();
+        caps.rgb444 = ColorBitDepths::BPC_8.with(ColorBitDepth::Depth10);
+        let sink = SinkCapabilities {
+            color_capabilities: caps,
+            hdmi_forum: Some(hf_sink(HdmiForumFrl::Rate6Gbps4Lanes)),
+            ..Default::default()
+        };
+        let modes = [mode(60), mode(30)];
+        let source = frl6_source();
+        let cable = CableCapabilities::unconstrained();
+        let candidates = collect_from(&modes, &sink, &source, &cable);
+        assert_eq!(candidates.len(), 16);
+    }
+
+    #[test]
+    fn all_candidates_borrow_from_mode_slice() {
+        let modes = [mode(60), mode(30)];
+        let sink = rgb8_sink();
+        let source = SourceCapabilities::default();
+        let cable = CableCapabilities::default();
+        let candidates = collect_from(&modes, &sink, &source, &cable);
+        let mid = candidates.len() / 2;
+        assert!(
+            candidates[..mid]
+                .iter()
+                .all(|c| core::ptr::eq(c.mode, &modes[0]))
+        );
+        assert!(
+            candidates[mid..]
+                .iter()
+                .all(|c| core::ptr::eq(c.mode, &modes[1]))
+        );
     }
 }
