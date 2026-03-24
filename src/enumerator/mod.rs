@@ -758,4 +758,44 @@ mod tests {
 
         assert_eq!(first, second);
     }
+
+    // --- DefaultEnumerator ---
+
+    #[test]
+    fn default_enumerator_empty_supported_modes_yields_nothing() {
+        // SinkCapabilities::default() has an empty SupportedModes list.
+        let sink = rgb8_sink(); // supported_modes is default (empty)
+        let source = SourceCapabilities::default();
+        let cable = CableCapabilities::default();
+        let candidates: alloc::vec::Vec<_> =
+            CandidateEnumerator::enumerate(&DefaultEnumerator, &sink, &source, &cable).collect();
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn default_enumerator_matches_slice_enumerator() {
+        // DefaultEnumerator must produce the same sequence as
+        // SliceEnumerator::new(sink.supported_modes.as_slice()) for identical inputs.
+        use crate::types::sink::SupportedModes;
+        let mut caps = display_types::ColorCapabilities::default();
+        caps.rgb444 = ColorBitDepths::BPC_8.with(ColorBitDepth::Depth10);
+        let (supported_modes, _) =
+            SupportedModes::from_vec(alloc::vec![mode(60), mode(30), mode(24)]);
+        let sink = SinkCapabilities {
+            color_capabilities: caps,
+            supported_modes,
+            hdmi_forum: Some(hf_sink(HdmiForumFrl::Rate6Gbps4Lanes)),
+            ..Default::default()
+        };
+        let source = frl6_source();
+        let cable = CableCapabilities::unconstrained();
+
+        let from_default: alloc::vec::Vec<_> =
+            CandidateEnumerator::enumerate(&DefaultEnumerator, &sink, &source, &cable).collect();
+        let slice_enumerator = SliceEnumerator::new(sink.supported_modes.as_slice());
+        let from_slice: alloc::vec::Vec<_> =
+            CandidateEnumerator::enumerate(&slice_enumerator, &sink, &source, &cable).collect();
+
+        assert_eq!(from_default, from_slice);
+    }
 }
