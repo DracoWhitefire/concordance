@@ -504,6 +504,43 @@ mod tests {
         assert_eq!(candidates.len(), 16);
     }
 
+    // --- Encoding order ---
+
+    #[test]
+    fn encoding_order_is_rgb_ycbcr444_ycbcr422_ycbcr420() {
+        // When all four encodings are supported the candidates must appear in the
+        // canonical order: Rgb444, YCbCr444, YCbCr422, YCbCr420 (encoding is the
+        // second-slowest dimension, changing once per full depth×frl×dsc block).
+        let mut caps = display_types::ColorCapabilities::default();
+        caps.rgb444   = ColorBitDepths::BPC_8;
+        caps.ycbcr444 = ColorBitDepths::BPC_8;
+        caps.ycbcr422 = ColorBitDepths::BPC_8;
+        caps.ycbcr420 = ColorBitDepths::BPC_8;
+        let sink = SinkCapabilities { color_capabilities: caps, ..Default::default() };
+        let modes = [mode(60)];
+        let source = SourceCapabilities::default();
+        let cable = CableCapabilities::default();
+        let candidates = collect_from(&modes, &sink, &source, &cable);
+
+        // Extract the encoding at each transition (first occurrence of each value).
+        let mut seen_order = alloc::vec::Vec::new();
+        for c in &candidates {
+            if seen_order.last() != Some(&c.color_encoding) {
+                seen_order.push(c.color_encoding);
+            }
+        }
+
+        assert_eq!(
+            seen_order,
+            alloc::vec![
+                ColorFormat::Rgb444,
+                ColorFormat::YCbCr444,
+                ColorFormat::YCbCr422,
+                ColorFormat::YCbCr420,
+            ]
+        );
+    }
+
     // --- build_iter pre-filtering ---
 
     #[test]
