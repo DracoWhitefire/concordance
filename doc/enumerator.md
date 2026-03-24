@@ -22,6 +22,39 @@ The enumerator is called once per negotiation run and returns a lazy iterator. I
 not own results, allocate per-candidate, or inspect violations — those are strictly the
 engine's concern.
 
+## The trait
+
+```rust
+pub trait CandidateEnumerator {
+    type Iter<'a>: Iterator<Item = CandidateConfig<'a>>
+    where
+        Self: 'a;
+
+    fn enumerate<'a>(
+        &'a self,
+        sink:   &'a SinkCapabilities,
+        source: &'a SourceCapabilities,
+        cable:  &'a CableCapabilities,
+    ) -> Self::Iter<'a>;
+}
+```
+
+`Iter` is a generic associated type (GAT), so each implementor can return its own
+concrete iterator without boxing. Both built-in enumerators return `EnumeratorIter<'a>`.
+
+The trait is the plug-in point for `NegotiatorBuilder`:
+
+```rust
+NegotiatorBuilder::default()                    // En = DefaultEnumerator
+    .with_enumerator(SliceEnumerator::new(&modes)) // En = SliceEnumerator<'_>
+```
+
+`NegotiatorBuilder` is generic over `En: CandidateEnumerator`; the enumerator slot is
+statically dispatched — no `dyn`, no allocation.
+
+`enumerate` is called once per `NegotiatorBuilder::negotiate` call. The returned
+iterator is driven to exhaustion by the pipeline; the enumerator itself is not mutated.
+
 ## The two concrete types
 
 ### `SliceEnumerator<'modes>`
