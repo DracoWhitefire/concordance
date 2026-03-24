@@ -37,6 +37,43 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for RefreshRateCheck {
     }
 }
 
+/// Checks that the pixel clock does not exceed the sink's declared maximum.
+///
+/// Reads `sink.max_pixel_clock_mhz`, which is populated from the EDID range limits
+/// descriptor (descriptor type `0xFD`, byte 9). Applies to all link types — the pixel
+/// clock ceiling is independent of encoding, bit depth, and whether the link is TMDS
+/// or FRL.
+pub struct PixelClockCheck;
+
+impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for PixelClockCheck {
+    fn display_name(&self) -> &'static str {
+        "pixel_clock_ceiling"
+    }
+
+    fn check(
+        &self,
+        sink: &SinkCapabilities,
+        _source: &SourceCapabilities,
+        _cable: &CableCapabilities,
+        config: &CandidateConfig<'_>,
+    ) -> Option<V> {
+        let limit_mhz = sink.max_pixel_clock_mhz? as u32;
+        let pixel_clock_khz = pixel_clock_khz_cvt_rb_estimate(config.mode);
+        let required_mhz = pixel_clock_khz / 1000;
+        if required_mhz > limit_mhz {
+            Some(
+                Violation::PixelClockExceeded {
+                    required_mhz,
+                    limit_mhz,
+                }
+                .into(),
+            )
+        } else {
+            None
+        }
+    }
+}
+
 /// Checks that the TMDS character rate does not exceed the ceiling for the link.
 pub struct TmdsClockCheck;
 
@@ -155,6 +192,16 @@ mod tests {
         )
     }
 
+    fn pixel_clock_check(sink: &SinkCapabilities, mode: &VideoMode) -> Option<Violation> {
+        ConstraintRule::<Violation>::check(
+            &PixelClockCheck,
+            sink,
+            &SourceCapabilities::default(),
+            &CableCapabilities::default(),
+            &config(mode),
+        )
+    }
+
     fn sink_with_tmds_limit(max_mhz: u16) -> SinkCapabilities {
         SinkCapabilities {
             hdmi_vsdb: Some(HdmiVsdb::new(
@@ -245,6 +292,63 @@ mod tests {
         };
         assert!(check(&sink, &mode(24)).is_none());
         assert!(check(&sink, &mode(144)).is_none());
+    }
+
+    // --- PixelClockCheck tests ---
+    // CVT-RB estimate for 1920×1080@60: ≈ 135_782 kHz ≈ 135 MHz.
+
+    #[test]
+    fn no_pixel_clock_limit_skips_check() {
+        // SinkCapabilities::default() has max_pixel_clock_mhz = None — check is skipped.
+        assert!(pixel_clock_check(&SinkCapabilities::default(), &mode(60)).is_none());
+    }
+
+    #[test]
+    fn within_pixel_clock_limit_passes() {
+        let sink = SinkCapabilities {
+            max_pixel_clock_mhz: Some(165),
+            ..Default::default()
+        };
+        assert!(pixel_clock_check(&sink, &mode(60)).is_none());
+    }
+
+    #[test]
+    fn exceeds_pixel_clock_limit_rejected() {
+        let sink = SinkCapabilities {
+            max_pixel_clock_mhz: Some(100),
+            ..Default::default()
+        };
+        assert!(matches!(
+            pixel_clock_check(&sink, &mode(60)),
+            Some(Violation::PixelClockExceeded { limit_mhz: 100, .. })
+        ));
+    }
+
+    #[test]
+    fn pixel_clock_check_applies_to_frl_candidate() {
+        // Unlike TmdsClockCheck, the pixel clock ceiling applies regardless of link type.
+        let sink = SinkCapabilities {
+            max_pixel_clock_mhz: Some(100),
+            ..Default::default()
+        };
+        let m = mode(60);
+        let result = ConstraintRule::<Violation>::check(
+            &PixelClockCheck,
+            &sink,
+            &SourceCapabilities::default(),
+            &CableCapabilities::default(),
+            &CandidateConfig {
+                mode: &m,
+                color_encoding: ColorFormat::Rgb444,
+                bit_depth: ColorBitDepth::Depth8,
+                frl_rate: HdmiForumFrl::Rate12Gbps4Lanes,
+                dsc_enabled: false,
+            },
+        );
+        assert!(matches!(
+            result,
+            Some(Violation::PixelClockExceeded { limit_mhz: 100, .. })
+        ));
     }
 
     // --- TmdsClockCheck tests ---

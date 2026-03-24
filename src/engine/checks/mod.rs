@@ -6,7 +6,7 @@ mod timing;
 pub use color::{BitDepthCheck, ColorEncodingCheck};
 pub use dsc::DscCheck;
 pub use frl::FrlCeilingCheck;
-pub use timing::{RefreshRateCheck, TmdsClockCheck};
+pub use timing::{PixelClockCheck, RefreshRateCheck, TmdsClockCheck};
 
 use crate::engine::rule::CheckList;
 use crate::output::warning::Violation;
@@ -18,6 +18,7 @@ use crate::output::warning::Violation;
 pub static DEFAULT_CHECKS: CheckList<Violation> = &[
     &FrlCeilingCheck,
     &RefreshRateCheck,
+    &PixelClockCheck,
     &TmdsClockCheck,
     &ColorEncodingCheck,
     &BitDepthCheck,
