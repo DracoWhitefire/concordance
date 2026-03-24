@@ -18,9 +18,21 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for RefreshRateCheck {
         _cable: &CableCapabilities,
         config: &CandidateConfig<'_>,
     ) -> Option<V> {
-        let _ = (sink, config);
-        // TODO
-        None
+        let min_hz = sink.min_v_rate?;
+        let max_hz = sink.max_v_rate?;
+        let rate_hz = config.mode.refresh_rate as u16;
+        if rate_hz < min_hz || rate_hz > max_hz {
+            Some(
+                Violation::RefreshRateOutOfRange {
+                    rate_hz,
+                    min_hz,
+                    max_hz,
+                }
+                .into(),
+            )
+        } else {
+            None
+        }
     }
 }
 
