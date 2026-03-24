@@ -9,5 +9,5 @@ pub use cable::CableCapabilities;
 pub use candidate::CandidateConfig;
 pub use sink::SinkCapabilities;
 #[cfg(any(feature = "alloc", feature = "std"))]
-pub use sink::sink_capabilities_from_display;
+pub use sink::{SinkBuildWarning, SupportedModes, sink_capabilities_from_display};
 pub use source::SourceCapabilities;

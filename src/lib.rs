@@ -49,4 +49,4 @@ pub use output::config::NegotiatedConfig;
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub use output::trace::ReasoningTrace;
 #[cfg(any(feature = "alloc", feature = "std"))]
-pub use types::sink_capabilities_from_display;
+pub use types::{SinkBuildWarning, SupportedModes, sink_capabilities_from_display};
