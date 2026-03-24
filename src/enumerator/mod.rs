@@ -709,4 +709,53 @@ mod tests {
                 .all(|c| core::ptr::eq(c.mode, &modes[1]))
         );
     }
+
+    // --- SliceEnumerator ---
+
+    #[test]
+    fn slice_enumerator_uses_provided_slice_not_sink_modes() {
+        // SliceEnumerator should enumerate the caller-supplied slice regardless of
+        // what sink.supported_modes contains.
+        use crate::types::sink::SupportedModes;
+        let sink_mode = VideoMode::new(3840, 2160, 60, false);
+        let slice_mode = VideoMode::new(1920, 1080, 60, false);
+
+        let mut caps = display_types::ColorCapabilities::default();
+        caps.rgb444 = ColorBitDepths::BPC_8;
+        let (supported_modes, _) = SupportedModes::from_vec(alloc::vec![sink_mode]);
+        let sink = SinkCapabilities {
+            color_capabilities: caps,
+            supported_modes,
+            ..Default::default()
+        };
+        let source = SourceCapabilities::default();
+        let cable = CableCapabilities::default();
+
+        let enumerator = SliceEnumerator::new(core::slice::from_ref(&slice_mode));
+        let candidates: alloc::vec::Vec<_> =
+            CandidateEnumerator::enumerate(&enumerator, &sink, &source, &cable).collect();
+
+        assert!(!candidates.is_empty());
+        assert!(
+            candidates.iter().all(|c| c.mode.width == 1920),
+            "expected only the slice mode (1920-wide), not the sink mode (3840-wide)"
+        );
+    }
+
+    #[test]
+    fn slice_enumerator_enumerate_is_repeatable() {
+        // enumerate() takes &self, so calling it twice must produce the same sequence.
+        let modes = [mode(60), mode(30)];
+        let sink = rgb8_sink();
+        let source = SourceCapabilities::default();
+        let cable = CableCapabilities::default();
+        let enumerator = SliceEnumerator::new(&modes);
+
+        let first: alloc::vec::Vec<_> =
+            CandidateEnumerator::enumerate(&enumerator, &sink, &source, &cable).collect();
+        let second: alloc::vec::Vec<_> =
+            CandidateEnumerator::enumerate(&enumerator, &sink, &source, &cable).collect();
+
+        assert_eq!(first, second);
+    }
 }
