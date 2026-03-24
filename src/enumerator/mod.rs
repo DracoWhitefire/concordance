@@ -504,6 +504,122 @@ mod tests {
         assert_eq!(candidates.len(), 16);
     }
 
+    // --- build_iter pre-filtering ---
+
+    #[test]
+    fn no_hf_scdb_yields_only_tmds() {
+        // A sink with no hdmi_forum block has no FRL support; only NotSupported should appear.
+        let modes = [mode(60)];
+        let sink = rgb8_sink(); // no hdmi_forum
+        let source = frl6_source();
+        let cable = CableCapabilities::unconstrained();
+        let candidates = collect_from(&modes, &sink, &source, &cable);
+        assert!(
+            candidates
+                .iter()
+                .all(|c| c.frl_rate == HdmiForumFrl::NotSupported),
+            "expected only TMDS candidates when sink has no HF-SCDB"
+        );
+    }
+
+    #[test]
+    fn cable_is_binding_frl_ceiling() {
+        // Source and sink both support Rate6Gbps4Lanes, but cable only Rate3Gbps3Lanes.
+        let modes = [mode(60)];
+        let sink = frl6_sink();
+        let source = frl6_source();
+        let cable = CableCapabilities {
+            max_frl_rate: HdmiForumFrl::Rate3Gbps3Lanes,
+            ..CableCapabilities::unconstrained()
+        };
+        let candidates = collect_from(&modes, &sink, &source, &cable);
+        let max_frl = candidates.iter().map(|c| c.frl_rate).max().unwrap();
+        assert_eq!(max_frl, HdmiForumFrl::Rate3Gbps3Lanes);
+    }
+
+    #[test]
+    fn all_seven_frl_tiers_when_ceiling_is_max() {
+        // When effective ceiling is Rate12Gbps4Lanes, all 7 tiers should be emitted.
+        let mut caps = display_types::ColorCapabilities::default();
+        caps.rgb444 = ColorBitDepths::BPC_8;
+        let sink = SinkCapabilities {
+            color_capabilities: caps,
+            hdmi_forum: Some(hf_sink(HdmiForumFrl::Rate12Gbps4Lanes)),
+            ..Default::default()
+        };
+        let source = SourceCapabilities {
+            max_frl_rate: HdmiForumFrl::Rate12Gbps4Lanes,
+            ..Default::default()
+        };
+        let modes = [mode(60)];
+        let cable = CableCapabilities::unconstrained();
+        let candidates = collect_from(&modes, &sink, &source, &cable);
+        let mut frl_rates: alloc::vec::Vec<_> = candidates.iter().map(|c| c.frl_rate).collect();
+        frl_rates.dedup();
+        assert_eq!(frl_rates.len(), 7);
+    }
+
+    #[test]
+    fn multiple_encodings_all_emitted() {
+        // Sink with RGB and YCbCr420 should produce candidates for both.
+        let mut caps = display_types::ColorCapabilities::default();
+        caps.rgb444 = ColorBitDepths::BPC_8;
+        caps.ycbcr420 = ColorBitDepths::BPC_8;
+        let sink = SinkCapabilities {
+            color_capabilities: caps,
+            ..Default::default()
+        };
+        let modes = [mode(60)];
+        let source = SourceCapabilities::default();
+        let cable = CableCapabilities::default();
+        let candidates = collect_from(&modes, &sink, &source, &cable);
+        let has_rgb = candidates
+            .iter()
+            .any(|c| c.color_encoding == ColorFormat::Rgb444);
+        let has_y420 = candidates
+            .iter()
+            .any(|c| c.color_encoding == ColorFormat::YCbCr420);
+        assert!(has_rgb, "expected RGB candidates");
+        assert!(has_y420, "expected YCbCr420 candidates");
+    }
+
+    #[test]
+    fn per_encoding_depths_are_independent() {
+        // RGB supports 8+10 bpc; YCbCr420 supports only 8 bpc.
+        // RGB candidates should include Depth10; YCbCr420 candidates should not.
+        let mut caps = display_types::ColorCapabilities::default();
+        caps.rgb444 = ColorBitDepths::BPC_8.with(ColorBitDepth::Depth10);
+        caps.ycbcr420 = ColorBitDepths::BPC_8;
+        let sink = SinkCapabilities {
+            color_capabilities: caps,
+            ..Default::default()
+        };
+        let modes = [mode(60)];
+        let source = SourceCapabilities::default();
+        let cable = CableCapabilities::default();
+        let candidates = collect_from(&modes, &sink, &source, &cable);
+
+        let rgb_depths: alloc::vec::Vec<_> = candidates
+            .iter()
+            .filter(|c| c.color_encoding == ColorFormat::Rgb444)
+            .map(|c| c.bit_depth)
+            .collect();
+        let y420_depths: alloc::vec::Vec<_> = candidates
+            .iter()
+            .filter(|c| c.color_encoding == ColorFormat::YCbCr420)
+            .map(|c| c.bit_depth)
+            .collect();
+
+        assert!(
+            rgb_depths.contains(&ColorBitDepth::Depth10),
+            "RGB should include Depth10"
+        );
+        assert!(
+            !y420_depths.contains(&ColorBitDepth::Depth10),
+            "YCbCr420 should not include Depth10"
+        );
+    }
+
     #[test]
     fn all_candidates_borrow_from_mode_slice() {
         let modes = [mode(60), mode(30)];
