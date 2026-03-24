@@ -620,6 +620,76 @@ mod tests {
         );
     }
 
+    // --- Odometer ordering ---
+
+    #[test]
+    fn odometer_sequence_within_mode() {
+        // Minimal case: 1 mode × 1 encoding (RGB) × 2 depths × 2 FRL tiers × 2 DSC states = 8
+        // candidates, in exact odometer order (depth slowest, then frl, then dsc fastest).
+        use crate::types::source::DscCapabilities;
+        let mut caps = display_types::ColorCapabilities::default();
+        caps.rgb444 = ColorBitDepths::BPC_8.with(ColorBitDepth::Depth10);
+        let sink = SinkCapabilities {
+            color_capabilities: caps,
+            hdmi_forum: Some(hf_sink_dsc(HdmiForumFrl::Rate3Gbps3Lanes)),
+            ..Default::default()
+        };
+        let source = SourceCapabilities {
+            max_frl_rate: HdmiForumFrl::Rate3Gbps3Lanes,
+            dsc: Some(DscCapabilities {
+                dsc_1p2: true,
+                max_slices: 4,
+                max_bpp_x16: 128,
+            }),
+            ..Default::default()
+        };
+        let modes = [mode(60)];
+        let cable = CableCapabilities::unconstrained();
+        let candidates = collect_from(&modes, &sink, &source, &cable);
+
+        // Expected: depth changes slower than frl, frl slower than dsc.
+        type T = (ColorBitDepth, HdmiForumFrl, bool);
+        let expected: &[T] = &[
+            (ColorBitDepth::Depth8, HdmiForumFrl::Rate3Gbps3Lanes, false),
+            (ColorBitDepth::Depth8, HdmiForumFrl::Rate3Gbps3Lanes, true),
+            (ColorBitDepth::Depth8, HdmiForumFrl::NotSupported, false),
+            (ColorBitDepth::Depth8, HdmiForumFrl::NotSupported, true),
+            (ColorBitDepth::Depth10, HdmiForumFrl::Rate3Gbps3Lanes, false),
+            (ColorBitDepth::Depth10, HdmiForumFrl::Rate3Gbps3Lanes, true),
+            (ColorBitDepth::Depth10, HdmiForumFrl::NotSupported, false),
+            (ColorBitDepth::Depth10, HdmiForumFrl::NotSupported, true),
+        ];
+
+        assert_eq!(candidates.len(), expected.len());
+        for (i, (c, &(depth, frl, dsc))) in candidates.iter().zip(expected).enumerate() {
+            assert_eq!(c.bit_depth, depth, "depth mismatch at {i}");
+            assert_eq!(c.frl_rate, frl, "frl mismatch at {i}");
+            assert_eq!(c.dsc_enabled, dsc, "dsc mismatch at {i}");
+        }
+    }
+
+    #[test]
+    fn mode_is_slowest_dimension() {
+        // All candidates for mode[0] must precede all candidates for mode[1].
+        let modes = [mode(60), mode(30)];
+        let sink = rgb8_sink();
+        let source = SourceCapabilities::default();
+        let cable = CableCapabilities::default();
+        let candidates = collect_from(&modes, &sink, &source, &cable);
+        let switch = candidates
+            .windows(2)
+            .position(|w| !core::ptr::eq(w[0].mode, w[1].mode));
+        if let Some(i) = switch {
+            // After the first mode switch there must be no further reference to modes[0].
+            assert!(
+                candidates[i + 1..]
+                    .iter()
+                    .all(|c| !core::ptr::eq(c.mode, &modes[0])),
+                "mode[0] appeared again after the switch at position {i}"
+            );
+        }
+    }
+
     #[test]
     fn all_candidates_borrow_from_mode_slice() {
         let modes = [mode(60), mode(30)];
