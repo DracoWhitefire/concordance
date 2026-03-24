@@ -6,7 +6,6 @@ use crate::engine::rule::{ConstraintRule, Layered};
 use crate::engine::{ConstraintEngine, DefaultConstraintEngine};
 use crate::enumerator::{CandidateEnumerator, DefaultEnumerator};
 use crate::output::config::NegotiatedConfig;
-use crate::output::warning::Warning;
 use crate::ranker::policy::NegotiationPolicy;
 use crate::ranker::{ConfigRanker, DefaultRanker};
 use crate::types::{CableCapabilities, SinkCapabilities, SourceCapabilities};
@@ -41,12 +40,7 @@ impl Default for NegotiatorBuilder {
     }
 }
 
-impl<E, En, R> NegotiatorBuilder<E, En, R>
-where
-    E: ConstraintEngine,
-    En: CandidateEnumerator,
-    R: ConfigRanker<Warning = Warning>,
-{
+impl<E, En, R> NegotiatorBuilder<E, En, R> {
     /// Overrides the constraint engine.
     pub fn with_engine<E2: ConstraintEngine>(self, engine: E2) -> NegotiatorBuilder<E2, En, R> {
         NegotiatorBuilder {
@@ -71,10 +65,7 @@ where
     }
 
     /// Overrides the configuration ranker.
-    pub fn with_ranker<R2: ConfigRanker<Warning = Warning>>(
-        self,
-        ranker: R2,
-    ) -> NegotiatorBuilder<E, En, R2> {
+    pub fn with_ranker<R2: ConfigRanker>(self, ranker: R2) -> NegotiatorBuilder<E, En, R2> {
         NegotiatorBuilder {
             engine: self.engine,
             enumerator: self.enumerator,
@@ -91,6 +82,7 @@ where
     /// the extra rule is only reached if all built-in checks pass.
     pub fn with_extra_rule<X>(self, rule: X) -> NegotiatorBuilder<Layered<E, X>, En, R>
     where
+        E: ConstraintEngine,
         X: ConstraintRule<E::Violation>,
     {
         NegotiatorBuilder {
@@ -112,7 +104,7 @@ impl<E, En, R> NegotiatorBuilder<E, En, R>
 where
     E: ConstraintEngine,
     En: CandidateEnumerator,
-    R: ConfigRanker<Warning = Warning>,
+    R: ConfigRanker<Warning = E::Warning>,
 {
     /// Runs the negotiation pipeline and returns a ranked list of viable configurations.
     ///
@@ -124,7 +116,7 @@ where
         sink: &SinkCapabilities,
         source: &SourceCapabilities,
         cable: &CableCapabilities,
-    ) -> Vec<NegotiatedConfig<Warning>> {
+    ) -> Vec<NegotiatedConfig<E::Warning>> {
         // TODO: implement full pipeline: enumerate → check → deduplicate → rank
         let _candidates = self.enumerator.enumerate(sink, source, cable);
         Vec::new()
