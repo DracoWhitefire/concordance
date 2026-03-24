@@ -113,12 +113,27 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for TmdsClockCheck {
         let tmds_khz = pixel_clock_khz * depth_numer / (4 * encoding_denom);
 
         // Find the binding ceiling across sink, source, and cable.
-        let sink_limit = sink
+        // A sink may declare its TMDS ceiling via the HDMI 1.x VSDB, the HDMI 2.x
+        // HF-SCDB, or both; the tighter of the two is used.
+        let vsdb_limit = sink
             .hdmi_vsdb
             .as_ref()
             .and_then(|v| v.max_tmds_clock_mhz)
             .map(|mhz| mhz as u32 * 1000)
             .unwrap_or(u32::MAX);
+        // HF-SCDB max_tmds_rate_mhz == 0 means ≤ 340 MHz per HDMI 2.1a §10.3.6.
+        let hf_limit = sink
+            .hdmi_forum
+            .as_ref()
+            .map(|hf| {
+                if hf.max_tmds_rate_mhz == 0 {
+                    340_000
+                } else {
+                    hf.max_tmds_rate_mhz as u32 * 1000
+                }
+            })
+            .unwrap_or(u32::MAX);
+        let sink_limit = vsdb_limit.min(hf_limit);
         let source_limit = if source.max_tmds_clock > 0 {
             source.max_tmds_clock
         } else {
@@ -151,7 +166,7 @@ mod tests {
     use crate::engine::rule::ConstraintRule;
     use crate::output::warning::Violation;
     use crate::types::{CableCapabilities, CandidateConfig, SourceCapabilities};
-    use display_types::cea861::{HdmiForumFrl, HdmiVsdb, HdmiVsdbFlags};
+    use display_types::cea861::{HdmiForumFrl, HdmiForumSinkCap, HdmiVsdb, HdmiVsdbFlags};
     use display_types::{ColorBitDepth, ColorFormat, VideoMode};
 
     fn mode(refresh_rate: u8) -> VideoMode {
@@ -220,6 +235,41 @@ mod tests {
     fn source_with_tmds_limit(max_khz: u32) -> SourceCapabilities {
         SourceCapabilities {
             max_tmds_clock: max_khz,
+            ..Default::default()
+        }
+    }
+
+    /// Sink with an HF-SCDB carrying `max_tmds_rate_mhz` but no VSDB.
+    /// Pass `0` to exercise the "≤ 340 MHz" sentinel defined in HDMI 2.1a §10.3.6.
+    fn sink_with_hf_tmds_limit(max_tmds_rate_mhz: u16) -> SinkCapabilities {
+        SinkCapabilities {
+            hdmi_forum: Some(HdmiForumSinkCap::new(
+                1,
+                max_tmds_rate_mhz,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                HdmiForumFrl::Rate12Gbps4Lanes,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                None,
+                None,
+                None,
+            )),
             ..Default::default()
         }
     }
@@ -479,6 +529,103 @@ mod tests {
                 HdmiForumFrl::NotSupported,
             ),
             Some(Violation::PixelClockExceeded { limit_mhz: 165, .. })
+        ));
+    }
+
+    // --- TmdsClockCheck: HF-SCDB limit tests ---
+
+    #[test]
+    fn hf_scdb_zero_rate_applies_340mhz_ceiling() {
+        // max_tmds_rate_mhz == 0 means ≤ 340 MHz. 1080p60 8bpc ≈ 136 MHz — passes.
+        let sink = sink_with_hf_tmds_limit(0);
+        let m = mode(60);
+        assert!(
+            tmds_check(
+                &sink,
+                &SourceCapabilities::default(),
+                &CableCapabilities::default(),
+                &m,
+                ColorFormat::Rgb444,
+                ColorBitDepth::Depth8,
+                HdmiForumFrl::NotSupported,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn hf_scdb_nonzero_rate_is_ceiling() {
+        // Explicit HF-SCDB limit of 100 MHz; 1080p60 8bpc ≈ 136 MHz — rejected.
+        let sink = sink_with_hf_tmds_limit(100);
+        let m = mode(60);
+        assert!(matches!(
+            tmds_check(
+                &sink,
+                &SourceCapabilities::default(),
+                &CableCapabilities::default(),
+                &m,
+                ColorFormat::Rgb444,
+                ColorBitDepth::Depth8,
+                HdmiForumFrl::NotSupported,
+            ),
+            Some(Violation::PixelClockExceeded { limit_mhz: 100, .. })
+        ));
+    }
+
+    #[test]
+    fn hf_scdb_ceiling_tighter_than_vsdb() {
+        // VSDB allows 600 MHz; HF-SCDB restricts to 100 MHz — HF-SCDB wins.
+        let sink = SinkCapabilities {
+            hdmi_vsdb: Some(HdmiVsdb::new(
+                0,
+                HdmiVsdbFlags::empty(),
+                Some(600),
+                None,
+                None,
+                None,
+                None,
+            )),
+            hdmi_forum: Some(HdmiForumSinkCap::new(
+                1,
+                100,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                HdmiForumFrl::Rate12Gbps4Lanes,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                None,
+                None,
+                None,
+            )),
+            ..Default::default()
+        };
+        let m = mode(60);
+        assert!(matches!(
+            tmds_check(
+                &sink,
+                &SourceCapabilities::default(),
+                &CableCapabilities::default(),
+                &m,
+                ColorFormat::Rgb444,
+                ColorBitDepth::Depth8,
+                HdmiForumFrl::NotSupported,
+            ),
+            Some(Violation::PixelClockExceeded { limit_mhz: 100, .. })
         ));
     }
 
