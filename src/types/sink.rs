@@ -15,7 +15,7 @@ use display_types::VideoMode;
 /// [`sink_capabilities_from_display`].
 #[non_exhaustive]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct SinkCapabilities {
     /// Video modes declared by the display.
     ///
@@ -52,6 +52,7 @@ pub struct SinkCapabilities {
     /// Colorimetry standards supported.
     pub colorimetry: Option<ColorimetryBlock>,
 }
+
 
 /// Derives [`SinkCapabilities`] from a parsed [`DisplayCapabilities`][display_types::DisplayCapabilities].
 ///
