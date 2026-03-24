@@ -48,3 +48,5 @@ pub use builder::NegotiatorBuilder;
 pub use output::config::NegotiatedConfig;
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub use output::trace::ReasoningTrace;
+#[cfg(any(feature = "alloc", feature = "std"))]
+pub use types::sink_capabilities_from_display;
