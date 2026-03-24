@@ -51,3 +51,14 @@ pub struct SourceCapabilities {
     /// Vendor-specific quirk overrides.
     pub quirks: QuirkFlags,
 }
+
+impl Default for SourceCapabilities {
+    fn default() -> Self {
+        Self {
+            max_tmds_clock: 0,
+            max_frl_rate: HdmiForumFrl::NotSupported,
+            dsc: None,
+            quirks: QuirkFlags::empty(),
+        }
+    }
+}

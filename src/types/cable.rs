@@ -37,6 +37,12 @@ pub struct CableCapabilities {
     pub max_tmds_clock: u32,
 }
 
+impl Default for CableCapabilities {
+    fn default() -> Self {
+        Self::unconstrained()
+    }
+}
+
 impl CableCapabilities {
     /// Returns a cable with no constraints — equivalent to assuming source and sink limits only.
     ///
