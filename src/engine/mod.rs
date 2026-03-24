@@ -96,6 +96,14 @@ pub struct DefaultConstraintEngine<V: 'static = Violation> {
     checks: CheckList<V>,
 }
 
+impl<V: 'static> Clone for DefaultConstraintEngine<V> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<V: 'static> Copy for DefaultConstraintEngine<V> {}
+
 /// Uses [`checks::DEFAULT_CHECKS`] as the rule list. Only available for `V = Violation`
 /// since `DEFAULT_CHECKS` is typed for the built-in violation set.
 impl Default for DefaultConstraintEngine<Violation> {
