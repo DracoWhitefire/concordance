@@ -1,4 +1,4 @@
-# Concordance — Design Document
+# Architecture
 
 ## Role
 
@@ -9,6 +9,31 @@ priority order, using what color format and bit depth?"
 Concordance is the policy layer of the stack. Parsing layers below it make no judgements.
 Hardware layers above it implement specification. Concordance is explicitly opinionated, but
 its opinions are configurable and its reasoning is always visible.
+
+## Scope
+
+Concordance covers:
+
+- validation of candidate configurations against HDMI 2.1 specification constraints,
+- enumeration of all candidate configurations from the intersection of sink, source, and cable
+  capabilities,
+- ranking of accepted candidates according to a configurable policy,
+- a `no_std`-compatible single-config probe (`is_config_viable`) for firmware and embedded targets,
+- structured diagnostics: violations for rejected configurations; warnings for accepted
+  configurations with caveats.
+
+The following are out of scope:
+
+- **Sink capability discovery** — parsing EDID and HF-VSDB into `SinkCapabilities` belongs in
+  the parsing layer (e.g. `piaf`). The integration layer converts parsed output into this
+  library's `SinkCapabilities` struct.
+- **Source capability discovery** — querying DRM/KMS or VBIOS for actual GPU limits belongs in
+  the integration layer.
+- **Cable capability discovery** — reading the HDMI cable type marker or accepting a user-supplied
+  override belongs in the integration layer.
+- **Link training** — determining whether a negotiated FRL tier is achievable on real hardware.
+- **InfoFrame encoding** — signaling the negotiated configuration to the sink.
+- **HDCP** — out of scope for the entire stack.
 
 ## Inputs and Output
 
@@ -252,6 +277,9 @@ deduplicated by the pipeline before ranking.
 Custom enumerators can restrict or expand the candidate set (e.g. to limit enumeration to a
 specific resolution list on embedded targets) without altering constraint or ranking logic.
 
+See [`doc/enumerator.md`](enumerator.md) for a detailed description of the Cartesian product
+dimensions, pre-filtering optimisation, and iterator implementation.
+
 ### 3. Ranker
 
 Orders the validated candidates according to a `NegotiationPolicy`. The default policy
@@ -458,69 +486,3 @@ the previous optimistic behavior.
 - **Serde on all public types** — every public type derives `Serialize`/`Deserialize` behind
   a `serde` feature flag, covering inputs, outputs, and policy types. Enables diagnostic
   tooling, config persistence, and test fixtures without making serde a required dependency.
-
-## Testing
-
-Negotiation logic benefits from a testing approach that combines small deterministic tests
-with larger corpus-based validation.
-
-### Unit tests
-
-Unit tests cover narrow pieces of logic and live next to the code they test. Constraint
-engine tests call `check` directly on handcrafted capability structs without going through
-the full pipeline. Enumerator tests assert on the candidate set produced from a given
-capability triple. This keeps failures localized: a failing test in the engine can only
-mean the engine is broken.
-
-### Integration tests
-
-A single integration test verifies that `NegotiatorBuilder::default()` wires the pipeline
-correctly and that `negotiate` invokes all three components. It does not duplicate the
-field-level assertions that belong in component unit tests.
-
-### Fixture tests
-
-Concordance should maintain a fixture corpus containing:
-
-- valid capability triples from real hardware,
-- capability declarations with known inconsistencies,
-- edge cases (TMDS-only cable, DSC required, VRR boundary conditions),
-- pathological inputs.
-
-A suggested layout:
-```text
-testdata/
- ├── valid/
- ├── invalid/
- └── edge/
-```
-
-Fixtures serve as a regression suite and a confidence base for refactoring negotiation logic
-without unintentionally changing behaviour.
-
-### Fuzzing
-
-Fuzzing is strongly recommended for the constraint engine and enumerator.
-
-Important expectations:
-
-- no panics,
-- no uncontrolled memory growth,
-- any input produces controlled output (violations, warnings) rather than undefined behaviour,
-- unknown or conflicting capability values do not break pipeline invariants.
-
-## Out of Scope
-
-- **Sink capability discovery** — parsing EDID and HF-VSDB into `SinkCapabilities` belongs
-  in the parsing layer (e.g. `piaf`). The integration layer converts parsed output into this
-  library's `SinkCapabilities` struct. Concordance consumes it; it does not produce it.
-- **Source capability discovery** — querying DRM/KMS or VBIOS for actual GPU limits belongs
-  in the integration layer. Concordance consumes `SourceCapabilities`; it does not produce it.
-- **Cable capability discovery** — reading the HDMI cable type marker from the sink EDID or
-  accepting a user-supplied override belongs in the integration layer. Concordance consumes
-  `CableCapabilities`; it does not produce it.
-- **Link training** — determining whether a negotiated FRL tier is achievable on real
-  hardware is the concern of the SCDC/link training layer.
-- **InfoFrame encoding** — signaling the negotiated configuration to the sink is handled by
-  the InfoFrame library.
-- **HDCP** — out of scope for the entire stack.

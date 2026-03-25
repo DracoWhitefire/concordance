@@ -1,7 +1,9 @@
 # concordance
 
 [![CI](https://github.com/DracoWhitefire/concordance/actions/workflows/ci.yml/badge.svg)](https://github.com/DracoWhitefire/concordance/actions/workflows/ci.yml)
-[![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](LICENSE)
+[![crates.io](https://img.shields.io/crates/v/concordance.svg)](https://crates.io/crates/concordance)
+[![docs.rs](https://docs.rs/concordance/badge.svg)](https://docs.rs/concordance)
+[![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](https://github.com/DracoWhitefire/concordance/blob/main/LICENSE)
 [![Rust 1.85+](https://img.shields.io/badge/rustc-1.85+-orange.svg)](https://blog.rust-lang.org/2025/02/20/Rust-1.85.0.html)
 
 HDMI 2.1 mode negotiation — policy layer of the display connection stack.
@@ -115,15 +117,20 @@ Without `alloc` or `std`, only `is_config_viable` is available. The three input 
 
 concordance is the policy layer. It consumes the typed model; it does not produce it.
 
-```
-piaf  ─────────────────────────────────► DisplayCapabilities
-(EDID parser)                                     │
-                                         sink_capabilities_from_display()
-                                                  │
-                                                  ▼
-                              SinkCapabilities ──┐
- integration layer ────────► SourceCapabilities ─┤─► NegotiatorBuilder ──► Vec<NegotiatedConfig>
- (GPU / cable discovery)     CableCapabilities ──┘
+```mermaid
+flowchart LR
+    piaf["piaf\n(EDID parser)"]
+    dc["DisplayCapabilities"]
+    sink["SinkCapabilities"]
+    nb["NegotiatorBuilder"]
+    out["Vec&lt;NegotiatedConfig&gt;"]
+    integ["integration layer\n(GPU / cable discovery)"]
+
+    piaf --> dc
+    dc -->|"sink_capabilities_from_display"| sink
+    sink --> nb
+    integ -->|"SourceCapabilities\nCableCapabilities"| nb
+    nb --> out
 ```
 
 All types in `SinkCapabilities` — `VideoMode`, `HdmiForumSinkCap`, `HdmiVsdb`,
@@ -143,11 +150,17 @@ cable capabilities.
 - **InfoFrame encoding** — signaling the negotiated configuration to the sink.
 - **HDCP** — out of scope for the entire stack.
 
-## Contributing
+## Documentation
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines and [doc/setup.md](doc/setup.md)
-for build and test instructions.
+Extended documentation lives under [`doc/`](doc/).
 
-## License
+**Understanding the library**
 
-Licensed under the [Mozilla Public License 2.0](LICENSE).
+- [`doc/architecture.md`](doc/architecture.md) — pipeline structure, constraint rules, ranking algorithm, and design principles
+- [`doc/enumerator.md`](doc/enumerator.md) — candidate enumeration, Cartesian product dimensions, and pre-filtering
+
+**Contributing**
+
+- [`doc/setup.md`](doc/setup.md) — build, test, and coverage commands
+- [`doc/testing.md`](doc/testing.md) — testing strategy, fixture corpus, and CI expectations
+- [`doc/roadmap.md`](doc/roadmap.md) — planned features and future work
