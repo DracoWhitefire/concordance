@@ -271,6 +271,30 @@ mod tests {
         assert_eq!(configs[0].mode.width, 1920);
     }
 
+    /// `with_engine` replaces the constraint check; an accept-all engine admits a
+    /// candidate that the default engine would reject (source TMDS ceiling too low).
+    #[test]
+    fn with_engine_accept_all_overrides_default_rejection() {
+        // 1080p@60 RGB 8 bpc TMDS clock ≈ 136 MHz; source ceiling = 50 MHz → default
+        // engine rejects it. AcceptAllEngine bypasses that check entirely.
+        let mode = VideoMode::new(1920, 1080, 60, false);
+        let sink = rgb8_sink();
+        let mut source = SourceCapabilities::default();
+        source.max_tmds_clock = 50_000; // 50 MHz — below 1080p@60 8 bpc
+        let cable = CableCapabilities::unconstrained();
+
+        let configs = NegotiatorBuilder::default()
+            .with_enumerator(SliceEnumerator::new(&[mode]))
+            .with_engine(AcceptAllEngine)
+            .negotiate(&sink, &source, &cable);
+
+        assert_eq!(
+            configs.len(),
+            1,
+            "AcceptAllEngine must admit candidates the default engine would reject"
+        );
+    }
+
     /// `with_engine` replaces the constraint check; a reject-all engine empties
     /// the result even for a configuration that the default engine would accept.
     #[test]
