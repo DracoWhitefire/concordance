@@ -534,7 +534,7 @@ Important expectations:
 - [x] Add private helper `fn pixel_area(mode: &VideoMode) -> u32` — `width as u32 * height as u32`.
 - [x] Add private helper `fn color_format_quality(fmt: ColorFormat) -> u8` — returns 3/2/1/0 for
       Rgb444/YCbCr444/YCbCr422/YCbCr420.
-- [ ] Add private `fn compare_configs(a, b, policy, native_pixels) -> Ordering` implementing
+- [x] Add private `fn compare_configs(a, b, policy, native_pixels) -> Ordering` implementing
       the multi-criterion comparison described in the ranking algorithm section above.
 - [ ] Add private `fn record_preferences(config: &mut NegotiatedConfig<Warning>, policy,
       native_pixels)` — appends `PreferenceApplied` steps to the config's trace for each
