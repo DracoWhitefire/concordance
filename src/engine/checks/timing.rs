@@ -150,7 +150,7 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for TmdsClockCheck {
             None
         } else {
             Some(
-                Violation::PixelClockExceeded {
+                Violation::TmdsClockExceeded {
                     required_mhz: tmds_khz / 1000,
                     limit_mhz: limit_khz / 1000,
                 }
@@ -478,7 +478,7 @@ mod tests {
                 ColorBitDepth::Depth8,
                 HdmiForumFrl::NotSupported,
             ),
-            Some(Violation::PixelClockExceeded { limit_mhz: 100, .. })
+            Some(Violation::TmdsClockExceeded { limit_mhz: 100, .. })
         ));
     }
 
@@ -497,7 +497,7 @@ mod tests {
                 ColorBitDepth::Depth8,
                 HdmiForumFrl::NotSupported,
             ),
-            Some(Violation::PixelClockExceeded { limit_mhz: 100, .. })
+            Some(Violation::TmdsClockExceeded { limit_mhz: 100, .. })
         ));
     }
 
@@ -528,7 +528,7 @@ mod tests {
                 ColorBitDepth::Depth10,
                 HdmiForumFrl::NotSupported,
             ),
-            Some(Violation::PixelClockExceeded { limit_mhz: 165, .. })
+            Some(Violation::TmdsClockExceeded { limit_mhz: 165, .. })
         ));
     }
 
@@ -568,7 +568,7 @@ mod tests {
                 ColorBitDepth::Depth8,
                 HdmiForumFrl::NotSupported,
             ),
-            Some(Violation::PixelClockExceeded { limit_mhz: 100, .. })
+            Some(Violation::TmdsClockExceeded { limit_mhz: 100, .. })
         ));
     }
 
@@ -625,7 +625,7 @@ mod tests {
                 ColorBitDepth::Depth8,
                 HdmiForumFrl::NotSupported,
             ),
-            Some(Violation::PixelClockExceeded { limit_mhz: 100, .. })
+            Some(Violation::TmdsClockExceeded { limit_mhz: 100, .. })
         ));
     }
 
@@ -645,7 +645,7 @@ mod tests {
                 ColorBitDepth::Depth8,
                 HdmiForumFrl::NotSupported,
             ),
-            Some(Violation::PixelClockExceeded { .. })
+            Some(Violation::TmdsClockExceeded { .. })
         ));
         assert!(
             tmds_check(

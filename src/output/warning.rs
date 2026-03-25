@@ -37,6 +37,15 @@ pub enum Violation {
         limit_mhz: u32,
     },
 
+    /// Required TMDS character rate exceeds what the sink, source, or cable supports.
+    #[error("TMDS clock {required_mhz} MHz exceeds limit of {limit_mhz} MHz")]
+    TmdsClockExceeded {
+        /// Required TMDS character rate in MHz.
+        required_mhz: u32,
+        /// Binding limit in MHz.
+        limit_mhz: u32,
+    },
+
     /// Required FRL rate exceeds what the sink, source, or cable supports.
     #[error("required FRL rate exceeds supported maximum")]
     FrlRateExceeded,
