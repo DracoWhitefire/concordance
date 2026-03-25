@@ -180,12 +180,31 @@ mod tests {
     /// equality checks in tests.
     fn hf_sink(max_tmds_rate_mhz: u16) -> HdmiForumSinkCap {
         HdmiForumSinkCap::new(
-            1, max_tmds_rate_mhz,
-            false, false, false, false, false, false, false, false,
+            1,
+            max_tmds_rate_mhz,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
             HdmiForumFrl::NotSupported,
-            false, false, false, false,
-            false, false, false, false, false, false, false,
-            None, None, None,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            None,
+            None,
+            None,
         )
     }
 
@@ -317,7 +336,9 @@ mod tests {
         with_cea(&mut caps, cea);
         let (sink, _) = sink_capabilities_from_display(&caps);
         assert!(
-            sink.color_capabilities.ycbcr420.supports(ColorBitDepth::Depth8),
+            sink.color_capabilities
+                .ycbcr420
+                .supports(ColorBitDepth::Depth8),
             "y420_vics must add YCbCr 4:2:0 8 bpc baseline"
         );
     }
@@ -331,7 +352,9 @@ mod tests {
         with_cea(&mut caps, cea);
         let (sink, _) = sink_capabilities_from_display(&caps);
         assert!(
-            sink.color_capabilities.ycbcr420.supports(ColorBitDepth::Depth8),
+            sink.color_capabilities
+                .ycbcr420
+                .supports(ColorBitDepth::Depth8),
             "y420_capability_map must add YCbCr 4:2:0 8 bpc baseline"
         );
     }
@@ -342,7 +365,13 @@ mod tests {
         use display_types::cea861::{HdrEotf, HdrStaticMetadata};
         let mut caps = DisplayCapabilities::default();
         let mut cea = Cea861Capabilities::new(Cea861Flags::empty());
-        cea.hdr_static_metadata = Some(HdrStaticMetadata::new(HdrEotf::empty(), 0, None, None, None));
+        cea.hdr_static_metadata = Some(HdrStaticMetadata::new(
+            HdrEotf::empty(),
+            0,
+            None,
+            None,
+            None,
+        ));
         with_cea(&mut caps, cea);
         let (sink, _) = sink_capabilities_from_display(&caps);
         assert!(sink.hdr_static.is_some());
@@ -369,12 +398,29 @@ mod tests {
         cea.hdmi_vsdb = Some(HdmiVsdb::new(
             0,
             HdmiVsdbFlags::DC_30BIT | HdmiVsdbFlags::DC_36BIT,
-            None, None, None, None, None,
+            None,
+            None,
+            None,
+            None,
+            None,
         ));
         with_cea(&mut caps, cea);
         let (sink, _) = sink_capabilities_from_display(&caps);
-        assert!(sink.color_capabilities.rgb444.supports(ColorBitDepth::Depth10));
-        assert!(sink.color_capabilities.rgb444.supports(ColorBitDepth::Depth12));
-        assert!(!sink.color_capabilities.rgb444.supports(ColorBitDepth::Depth16));
+        assert!(
+            sink.color_capabilities
+                .rgb444
+                .supports(ColorBitDepth::Depth10)
+        );
+        assert!(
+            sink.color_capabilities
+                .rgb444
+                .supports(ColorBitDepth::Depth12)
+        );
+        assert!(
+            !sink
+                .color_capabilities
+                .rgb444
+                .supports(ColorBitDepth::Depth16)
+        );
     }
 }

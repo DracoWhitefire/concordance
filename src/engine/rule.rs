@@ -238,6 +238,12 @@ mod tests {
     // --- Layered<R1, R2> as ConstraintRule ---
 
     #[test]
+    fn layered_rule_display_name_is_layered() {
+        let rule: Layered<AlwaysPass, AlwaysPass> = Layered::new(AlwaysPass, AlwaysPass);
+        assert_eq!(ConstraintRule::<Violation>::display_name(&rule), "layered");
+    }
+
+    #[test]
     fn layered_rule_both_pass() {
         let m = mode();
         let rule = Layered::new(AlwaysPass, AlwaysPass);

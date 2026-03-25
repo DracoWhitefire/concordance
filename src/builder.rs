@@ -285,7 +285,10 @@ mod tests {
             .with_engine(RejectAllEngine)
             .negotiate(&sink, &source, &cable);
 
-        assert!(configs.is_empty(), "RejectAllEngine must eliminate all candidates");
+        assert!(
+            configs.is_empty(),
+            "RejectAllEngine must eliminate all candidates"
+        );
     }
 
     /// `with_ranker` replaces the ordering step; the output reflects the custom
@@ -309,7 +312,10 @@ mod tests {
             .negotiate(&sink, &source, &cable);
 
         assert_eq!(configs.len(), 2);
-        assert_eq!(configs[0].mode.width, 1920, "ReverseRanker must put 1080p first");
+        assert_eq!(
+            configs[0].mode.width, 1920,
+            "ReverseRanker must put 1080p first"
+        );
         assert_eq!(configs[1].mode.width, 3840);
     }
 
@@ -327,7 +333,10 @@ mod tests {
             .with_extra_rule(AlwaysRejectRule)
             .negotiate(&sink, &source, &cable);
 
-        assert!(configs.is_empty(), "AlwaysRejectRule must eliminate all candidates");
+        assert!(
+            configs.is_empty(),
+            "AlwaysRejectRule must eliminate all candidates"
+        );
     }
 
     /// The pipeline deduplicates candidates that are identical across all five
@@ -343,6 +352,10 @@ mod tests {
             .with_enumerator(SliceEnumerator::new(&[mode.clone(), mode]))
             .negotiate(&sink, &source, &cable);
 
-        assert_eq!(configs.len(), 1, "identical candidates must be deduplicated");
+        assert_eq!(
+            configs.len(),
+            1,
+            "identical candidates must be deduplicated"
+        );
     }
 }
