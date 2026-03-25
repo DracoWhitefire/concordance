@@ -4,7 +4,7 @@ pub mod policy;
 
 use alloc::vec::Vec;
 
-use display_types::VideoMode;
+use display_types::{ColorFormat, VideoMode};
 
 use crate::diagnostic::Diagnostic;
 use crate::output::config::NegotiatedConfig;
@@ -45,6 +45,22 @@ fn pixel_area(mode: &VideoMode) -> u32 {
     mode.width as u32 * mode.height as u32
 }
 
+/// Returns a quality rank for a color encoding format (higher = better fidelity).
+///
+/// `Rgb444` ranks above `YCbCr444` at the same chroma resolution because it requires no
+/// color-space conversion at the sink. In power-saving mode the caller inverts this value
+/// to prefer simpler (lower-bandwidth) formats instead.
+fn color_format_quality(fmt: ColorFormat) -> u8 {
+    match fmt {
+        ColorFormat::Rgb444 => 3,
+        ColorFormat::YCbCr444 => 2,
+        ColorFormat::YCbCr422 => 1,
+        ColorFormat::YCbCr420 => 0,
+        // Non-exhaustive: treat any future variant as lowest quality.
+        _ => 0,
+    }
+}
+
 impl ConfigRanker for DefaultRanker {
     type Warning = crate::output::warning::Warning;
 
@@ -60,12 +76,28 @@ impl ConfigRanker for DefaultRanker {
 
 #[cfg(test)]
 mod tests {
-    use display_types::VideoMode;
+    use display_types::{ColorFormat, VideoMode};
 
-    use super::pixel_area;
+    use super::{color_format_quality, pixel_area};
 
     fn mode(width: u16, height: u16) -> VideoMode {
         VideoMode::new(width, height, 60, false)
+    }
+
+    #[test]
+    fn color_format_quality_ordering() {
+        // Full ordering: Rgb444 > YCbCr444 > YCbCr422 > YCbCr420.
+        assert!(color_format_quality(ColorFormat::Rgb444) > color_format_quality(ColorFormat::YCbCr444));
+        assert!(color_format_quality(ColorFormat::YCbCr444) > color_format_quality(ColorFormat::YCbCr422));
+        assert!(color_format_quality(ColorFormat::YCbCr422) > color_format_quality(ColorFormat::YCbCr420));
+    }
+
+    #[test]
+    fn color_format_quality_exact_values() {
+        assert_eq!(color_format_quality(ColorFormat::Rgb444), 3);
+        assert_eq!(color_format_quality(ColorFormat::YCbCr444), 2);
+        assert_eq!(color_format_quality(ColorFormat::YCbCr422), 1);
+        assert_eq!(color_format_quality(ColorFormat::YCbCr420), 0);
     }
 
     #[test]
