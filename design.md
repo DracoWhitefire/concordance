@@ -536,7 +536,7 @@ Important expectations:
       Rgb444/YCbCr444/YCbCr422/YCbCr420.
 - [x] Add private `fn compare_configs(a, b, policy, native_pixels) -> Ordering` implementing
       the multi-criterion comparison described in the ranking algorithm section above.
-- [ ] Add private `fn record_preferences(config: &mut NegotiatedConfig<Warning>, policy,
+- [x] Add private `fn record_preferences(config: &mut NegotiatedConfig<Warning>, policy,
       native_pixels)` — appends `PreferenceApplied` steps to the config's trace for each
       criterion that applies to it.
 - [ ] Implement `DefaultRanker::rank`: compute `native_pixels` from the accepted set, sort

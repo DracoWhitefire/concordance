@@ -11,6 +11,7 @@ use display_types::{ColorBitDepth, ColorFormat, VideoMode};
 
 use crate::diagnostic::Diagnostic;
 use crate::output::config::NegotiatedConfig;
+use crate::output::trace::DecisionStep;
 use crate::ranker::policy::NegotiationPolicy;
 
 pub use policy::NegotiationPolicy as Policy;
@@ -155,6 +156,47 @@ fn compare_configs<W>(
     pixel_area(&b.mode).cmp(&pixel_area(&a.mode))
 }
 
+/// Appends [`DecisionStep::PreferenceApplied`] steps to `config`'s trace for each
+/// ranking criterion that applies to this specific configuration.
+///
+/// These are per-config facts, not relative comparisons. They give a diagnostic tool
+/// enough context to explain a configuration's characteristics without requiring
+/// knowledge of the full ranked list.
+fn record_preferences<W>(
+    config: &mut NegotiatedConfig<W>,
+    policy: &NegotiationPolicy,
+    native_pixels: u32,
+) {
+    if policy.penalize_dsc && config.dsc_required {
+        config.trace.steps.push(DecisionStep::PreferenceApplied {
+            rule: "DSC penalized".into(),
+        });
+    }
+
+    if policy.prefer_native_resolution && pixel_area(&config.mode) == native_pixels {
+        config.trace.steps.push(DecisionStep::PreferenceApplied {
+            rule: "native resolution preferred".into(),
+        });
+    }
+
+    let quality_rule = if policy.prefer_color_fidelity {
+        "color fidelity preferred"
+    } else if policy.prefer_high_refresh {
+        "high refresh rate preferred"
+    } else {
+        "power saving ordering applied"
+    };
+    config.trace.steps.push(DecisionStep::PreferenceApplied {
+        rule: quality_rule.into(),
+    });
+
+    if !config.mode.interlaced {
+        config.trace.steps.push(DecisionStep::PreferenceApplied {
+            rule: "progressive mode preferred".into(),
+        });
+    }
+}
+
 impl ConfigRanker for DefaultRanker {
     type Warning = crate::output::warning::Warning;
 
@@ -179,7 +221,9 @@ mod tests {
     use crate::output::{config::NegotiatedConfig, trace::ReasoningTrace, warning::Warning};
     use crate::ranker::policy::NegotiationPolicy;
 
-    use super::{color_format_quality, compare_configs, pixel_area};
+    use crate::output::trace::DecisionStep;
+
+    use super::{color_format_quality, compare_configs, pixel_area, record_preferences};
 
     fn mode(width: u16, height: u16) -> VideoMode {
         VideoMode::new(width, height, 60, false)
@@ -483,6 +527,96 @@ mod tests {
 
         assert_eq!(compare_configs(&wider, &narrower, &policy, native_pixels), Ordering::Less);
         assert_eq!(compare_configs(&narrower, &wider, &policy, native_pixels), Ordering::Greater);
+    }
+
+    // --- record_preferences ---
+
+    fn has_preference(config: &NegotiatedConfig<Warning>, rule: &str) -> bool {
+        config.trace.steps.iter().any(|step| {
+            matches!(step, DecisionStep::PreferenceApplied { rule: r } if r == rule)
+        })
+    }
+
+    #[test]
+    fn trace_records_dsc_penalty() {
+        let mut c = NegotiatedConfig { dsc_required: true, ..base() };
+        record_preferences(&mut c, &NegotiationPolicy::BEST_QUALITY, NATIVE);
+        assert!(has_preference(&c, "DSC penalized"));
+    }
+
+    #[test]
+    fn trace_no_dsc_penalty_when_not_penalized() {
+        let mut c = NegotiatedConfig { dsc_required: true, ..base() };
+        record_preferences(&mut c, &NegotiationPolicy::BEST_PERFORMANCE, NATIVE); // penalize_dsc=false
+        assert!(!has_preference(&c, "DSC penalized"));
+    }
+
+    #[test]
+    fn trace_no_dsc_penalty_when_not_required() {
+        let mut c = base(); // dsc_required=false
+        record_preferences(&mut c, &NegotiationPolicy::BEST_QUALITY, NATIVE);
+        assert!(!has_preference(&c, "DSC penalized"));
+    }
+
+    #[test]
+    fn trace_records_native_resolution() {
+        let mut c = base();
+        record_preferences(&mut c, &NegotiationPolicy::BEST_QUALITY, NATIVE); // pixel_area matches
+        assert!(has_preference(&c, "native resolution preferred"));
+    }
+
+    #[test]
+    fn trace_no_native_resolution_when_not_native() {
+        let mut c = base();
+        let other_native = pixel_area(&VideoMode::new(3840, 2160, 60, false));
+        record_preferences(&mut c, &NegotiationPolicy::BEST_QUALITY, other_native);
+        assert!(!has_preference(&c, "native resolution preferred"));
+    }
+
+    #[test]
+    fn trace_no_native_resolution_when_not_preferred() {
+        let mut c = base();
+        let policy = NegotiationPolicy { prefer_native_resolution: false, ..NegotiationPolicy::BEST_QUALITY };
+        record_preferences(&mut c, &policy, NATIVE);
+        assert!(!has_preference(&c, "native resolution preferred"));
+    }
+
+    #[test]
+    fn trace_records_color_fidelity_preferred() {
+        let mut c = base();
+        record_preferences(&mut c, &NegotiationPolicy::BEST_QUALITY, NATIVE);
+        assert!(has_preference(&c, "color fidelity preferred"));
+    }
+
+    #[test]
+    fn trace_records_high_refresh_preferred() {
+        let mut c = base();
+        record_preferences(&mut c, &NegotiationPolicy::BEST_PERFORMANCE, NATIVE);
+        assert!(has_preference(&c, "high refresh rate preferred"));
+    }
+
+    #[test]
+    fn trace_records_power_saving_ordering() {
+        let mut c = base();
+        record_preferences(&mut c, &NegotiationPolicy::POWER_SAVING, NATIVE);
+        assert!(has_preference(&c, "power saving ordering applied"));
+    }
+
+    #[test]
+    fn trace_records_progressive_mode() {
+        let mut c = base(); // interlaced=false
+        record_preferences(&mut c, &NegotiationPolicy::BEST_QUALITY, NATIVE);
+        assert!(has_preference(&c, "progressive mode preferred"));
+    }
+
+    #[test]
+    fn trace_no_progressive_step_for_interlaced() {
+        let mut c = NegotiatedConfig {
+            mode: VideoMode::new(1920, 1080, 60, true),
+            ..base()
+        };
+        record_preferences(&mut c, &NegotiationPolicy::BEST_QUALITY, NATIVE);
+        assert!(!has_preference(&c, "progressive mode preferred"));
     }
 
     #[test]
