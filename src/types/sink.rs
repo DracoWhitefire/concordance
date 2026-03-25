@@ -29,6 +29,8 @@ impl SupportedModes {
         let mut seen: Vec<VideoMode> = Vec::with_capacity(modes.len());
         let mut duplicates = Vec::new();
         for mode in modes {
+            // Linear scan is O(n²), but EDID mode lists are small (< 100 entries)
+            // and `HashSet` is not available in `alloc`-only builds.
             if seen.contains(&mode) {
                 duplicates.push(mode);
             } else {
