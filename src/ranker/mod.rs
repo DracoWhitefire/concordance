@@ -6,8 +6,7 @@ use alloc::vec::Vec;
 
 use core::cmp::Ordering;
 
-use display_types::cea861::HdmiForumFrl;
-use display_types::{ColorBitDepth, ColorFormat, VideoMode};
+use display_types::{ColorFormat, VideoMode};
 
 use crate::diagnostic::Diagnostic;
 use crate::output::config::NegotiatedConfig;
@@ -202,10 +201,17 @@ impl ConfigRanker for DefaultRanker {
 
     fn rank(
         &self,
-        configs: Vec<NegotiatedConfig<Self::Warning>>,
-        _policy: &NegotiationPolicy,
+        mut configs: Vec<NegotiatedConfig<Self::Warning>>,
+        policy: &NegotiationPolicy,
     ) -> Vec<NegotiatedConfig<Self::Warning>> {
-        // TODO: implement ranking according to policy
+        let native_pixels = configs.iter().map(|c| pixel_area(&c.mode)).max().unwrap_or(0);
+
+        configs.sort_by(|a, b| compare_configs(a, b, policy, native_pixels));
+
+        for config in &mut configs {
+            record_preferences(config, policy, native_pixels);
+        }
+
         configs
     }
 }
