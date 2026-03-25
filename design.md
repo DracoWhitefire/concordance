@@ -531,7 +531,7 @@ Important expectations:
 
 ### `DefaultRanker` (`src/ranker/mod.rs`)
 
-- [ ] Add private helper `fn pixel_area(mode: &VideoMode) -> u32` — `width as u32 * height as u32`.
+- [x] Add private helper `fn pixel_area(mode: &VideoMode) -> u32` — `width as u32 * height as u32`.
 - [ ] Add private helper `fn color_format_quality(fmt: ColorFormat) -> u8` — returns 3/2/1/0 for
       Rgb444/YCbCr444/YCbCr422/YCbCr420.
 - [ ] Add private `fn compare_configs(a, b, policy, native_pixels) -> Ordering` implementing
