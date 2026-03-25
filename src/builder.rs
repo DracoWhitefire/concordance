@@ -18,7 +18,11 @@ use crate::types::{CableCapabilities, SinkCapabilities, SourceCapabilities};
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```
+/// # use concordance::{NegotiatorBuilder, SinkCapabilities, SourceCapabilities, CableCapabilities};
+/// # let sink = SinkCapabilities::default();
+/// # let source = SourceCapabilities::default();
+/// # let cable = CableCapabilities::default();
 /// let configs = NegotiatorBuilder::default()
 ///     .negotiate(&sink, &source, &cable);
 /// ```

@@ -233,8 +233,11 @@ fn build_iter<'a>(
 /// The caller provides the mode list at construction time. This is the right
 /// choice for embedded targets and for tests that want a controlled mode set.
 ///
-/// ```rust,ignore
-/// let enumerator = SliceEnumerator::new(sink.supported_modes.as_slice());
+/// ```
+/// # use concordance::enumerator::SliceEnumerator;
+/// # use display_types::VideoMode;
+/// # let modes: &[VideoMode] = &[];
+/// let enumerator = SliceEnumerator::new(modes);
 /// ```
 #[derive(Debug)]
 pub struct SliceEnumerator<'modes> {
