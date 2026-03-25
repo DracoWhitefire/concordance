@@ -8,6 +8,58 @@ use alloc::vec::Vec;
 #[cfg(any(feature = "alloc", feature = "std"))]
 use display_types::VideoMode;
 
+/// A sorted, deduplicated list of video modes.
+///
+/// Constructed via [`SupportedModes::from_vec`], which normalises the input on
+/// entry so that every downstream consumer — including the enumerator — can rely
+/// on the invariant unconditionally.
+///
+/// Available in `alloc` and `std` tiers only.
+#[cfg(any(feature = "alloc", feature = "std"))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SupportedModes(Vec<VideoMode>);
+
+#[cfg(any(feature = "alloc", feature = "std"))]
+impl SupportedModes {
+    /// Deduplicates `modes`, returning the normalised list and any duplicate
+    /// entries that were removed. Insertion order of the first occurrence of
+    /// each mode is preserved.
+    pub fn from_vec(modes: Vec<VideoMode>) -> (Self, Vec<VideoMode>) {
+        let mut seen: Vec<VideoMode> = Vec::with_capacity(modes.len());
+        let mut duplicates = Vec::new();
+        for mode in modes {
+            // Linear scan is O(n²), but EDID mode lists are small (< 100 entries)
+            // and `HashSet` is not available in `alloc`-only builds.
+            if seen.contains(&mode) {
+                duplicates.push(mode);
+            } else {
+                seen.push(mode);
+            }
+        }
+        (SupportedModes(seen), duplicates)
+    }
+
+    /// Returns the modes as a slice.
+    pub fn as_slice(&self) -> &[VideoMode] {
+        &self.0
+    }
+}
+
+/// Warning produced by [`sink_capabilities_from_display`] during EDID parsing.
+///
+/// Returned alongside [`SinkCapabilities`] to surface construction-time anomalies
+/// without making them fatal. The list is empty for well-formed EDIDs.
+#[cfg(any(feature = "alloc", feature = "std"))]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum SinkBuildWarning {
+    /// One or more video modes appeared more than once in the EDID and were removed.
+    #[error("{} duplicate video mode(s) removed", .0.len())]
+    DuplicateModes(Vec<VideoMode>),
+}
+
 /// Capabilities of the connected display.
 ///
 /// The caller fills this struct manually, or constructs it from a parsed
@@ -22,7 +74,7 @@ pub struct SinkCapabilities {
     /// Absent in bare `no_std` builds; [`is_config_viable`][crate::is_config_viable]
     /// validates a caller-supplied candidate rather than enumerating one.
     #[cfg(any(feature = "alloc", feature = "std"))]
-    pub supported_modes: Vec<VideoMode>,
+    pub supported_modes: SupportedModes,
 
     /// Maximum pixel clock in MHz (from EDID range limits descriptor).
     pub max_pixel_clock_mhz: Option<u16>,
@@ -66,7 +118,7 @@ pub struct SinkCapabilities {
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub fn sink_capabilities_from_display(
     caps: &display_types::DisplayCapabilities,
-) -> SinkCapabilities {
+) -> (SinkCapabilities, Vec<SinkBuildWarning>) {
     use display_types::cea861::Cea861Capabilities;
     use display_types::{ColorBitDepth, color_capabilities_from_edid};
 
@@ -91,15 +143,24 @@ pub fn sink_capabilities_from_display(
         color_capabilities.ycbcr420 = color_capabilities.ycbcr420.with(ColorBitDepth::Depth8);
     }
 
-    SinkCapabilities {
-        supported_modes: caps.supported_modes.clone(),
-        max_pixel_clock_mhz: caps.max_pixel_clock_mhz,
-        min_v_rate: caps.min_v_rate,
-        max_v_rate: caps.max_v_rate,
-        color_capabilities,
-        hdmi_vsdb: cea.and_then(|c| c.hdmi_vsdb.clone()),
-        hdmi_forum: cea.and_then(|c| c.hf_scdb.clone().or_else(|| c.hf_vsdb.clone())),
-        hdr_static: cea.and_then(|c| c.hdr_static_metadata.clone()),
-        colorimetry: cea.and_then(|c| c.colorimetry),
+    let (supported_modes, duplicates) = SupportedModes::from_vec(caps.supported_modes.clone());
+    let mut warnings = Vec::new();
+    if !duplicates.is_empty() {
+        warnings.push(SinkBuildWarning::DuplicateModes(duplicates));
     }
+
+    (
+        SinkCapabilities {
+            supported_modes,
+            max_pixel_clock_mhz: caps.max_pixel_clock_mhz,
+            min_v_rate: caps.min_v_rate,
+            max_v_rate: caps.max_v_rate,
+            color_capabilities,
+            hdmi_vsdb: cea.and_then(|c| c.hdmi_vsdb.clone()),
+            hdmi_forum: cea.and_then(|c| c.hf_scdb.clone().or_else(|| c.hf_vsdb.clone())),
+            hdr_static: cea.and_then(|c| c.hdr_static_metadata.clone()),
+            colorimetry: cea.and_then(|c| c.colorimetry),
+        },
+        warnings,
+    )
 }
