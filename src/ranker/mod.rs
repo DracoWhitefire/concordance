@@ -97,11 +97,15 @@ fn compare_configs<W>(
     // 3. Quality/performance dimension.
     if policy.prefer_color_fidelity {
         // Bit depth descending, then color format quality descending, then refresh rate descending.
-        let ord = b.bit_depth.bits_per_primary().cmp(&a.bit_depth.bits_per_primary());
+        let ord = b
+            .bit_depth
+            .bits_per_primary()
+            .cmp(&a.bit_depth.bits_per_primary());
         if ord != Ordering::Equal {
             return ord;
         }
-        let ord = color_format_quality(b.color_encoding).cmp(&color_format_quality(a.color_encoding));
+        let ord =
+            color_format_quality(b.color_encoding).cmp(&color_format_quality(a.color_encoding));
         if ord != Ordering::Equal {
             return ord;
         }
@@ -115,11 +119,15 @@ fn compare_configs<W>(
         if ord != Ordering::Equal {
             return ord;
         }
-        let ord = b.bit_depth.bits_per_primary().cmp(&a.bit_depth.bits_per_primary());
+        let ord = b
+            .bit_depth
+            .bits_per_primary()
+            .cmp(&a.bit_depth.bits_per_primary());
         if ord != Ordering::Equal {
             return ord;
         }
-        let ord = color_format_quality(b.color_encoding).cmp(&color_format_quality(a.color_encoding));
+        let ord =
+            color_format_quality(b.color_encoding).cmp(&color_format_quality(a.color_encoding));
         if ord != Ordering::Equal {
             return ord;
         }
@@ -129,11 +137,15 @@ fn compare_configs<W>(
         if ord != Ordering::Equal {
             return ord;
         }
-        let ord = a.bit_depth.bits_per_primary().cmp(&b.bit_depth.bits_per_primary());
+        let ord = a
+            .bit_depth
+            .bits_per_primary()
+            .cmp(&b.bit_depth.bits_per_primary());
         if ord != Ordering::Equal {
             return ord;
         }
-        let ord = color_format_quality(a.color_encoding).cmp(&color_format_quality(b.color_encoding));
+        let ord =
+            color_format_quality(a.color_encoding).cmp(&color_format_quality(b.color_encoding));
         if ord != Ordering::Equal {
             return ord;
         }
@@ -204,7 +216,11 @@ impl ConfigRanker for DefaultRanker {
         mut configs: Vec<NegotiatedConfig<Self::Warning>>,
         policy: &NegotiationPolicy,
     ) -> Vec<NegotiatedConfig<Self::Warning>> {
-        let native_pixels = configs.iter().map(|c| pixel_area(&c.mode)).max().unwrap_or(0);
+        let native_pixels = configs
+            .iter()
+            .map(|c| pixel_area(&c.mode))
+            .max()
+            .unwrap_or(0);
 
         configs.sort_by(|a, b| compare_configs(a, b, policy, native_pixels));
 
@@ -228,7 +244,9 @@ mod tests {
     use crate::ranker::policy::NegotiationPolicy;
 
     use crate::output::trace::DecisionStep;
+    use crate::ranker::DefaultRanker;
 
+    use super::ConfigRanker;
     use super::{color_format_quality, compare_configs, pixel_area, record_preferences};
 
     fn mode(width: u16, height: u16) -> VideoMode {
@@ -261,18 +279,31 @@ mod tests {
     /// Shorthand for a typical 1080p60 progressive config with sensible defaults.
     fn base() -> NegotiatedConfig<Warning> {
         config(
-            1920, 1080, 60, false,
-            ColorFormat::Rgb444, ColorBitDepth::Depth8,
-            HdmiForumFrl::NotSupported, false,
+            1920,
+            1080,
+            60,
+            false,
+            ColorFormat::Rgb444,
+            ColorBitDepth::Depth8,
+            HdmiForumFrl::NotSupported,
+            false,
         )
     }
 
     #[test]
     fn color_format_quality_ordering() {
         // Full ordering: Rgb444 > YCbCr444 > YCbCr422 > YCbCr420.
-        assert!(color_format_quality(ColorFormat::Rgb444) > color_format_quality(ColorFormat::YCbCr444));
-        assert!(color_format_quality(ColorFormat::YCbCr444) > color_format_quality(ColorFormat::YCbCr422));
-        assert!(color_format_quality(ColorFormat::YCbCr422) > color_format_quality(ColorFormat::YCbCr420));
+        assert!(
+            color_format_quality(ColorFormat::Rgb444) > color_format_quality(ColorFormat::YCbCr444)
+        );
+        assert!(
+            color_format_quality(ColorFormat::YCbCr444)
+                > color_format_quality(ColorFormat::YCbCr422)
+        );
+        assert!(
+            color_format_quality(ColorFormat::YCbCr422)
+                > color_format_quality(ColorFormat::YCbCr420)
+        );
     }
 
     #[test]
@@ -309,11 +340,20 @@ mod tests {
     #[test]
     fn dsc_penalized_ranks_lower() {
         let no_dsc = base();
-        let with_dsc = NegotiatedConfig { dsc_required: true, ..base() };
+        let with_dsc = NegotiatedConfig {
+            dsc_required: true,
+            ..base()
+        };
         let policy = NegotiationPolicy::BEST_QUALITY; // penalize_dsc = true
 
-        assert_eq!(compare_configs(&no_dsc, &with_dsc, &policy, NATIVE), Ordering::Less);
-        assert_eq!(compare_configs(&with_dsc, &no_dsc, &policy, NATIVE), Ordering::Greater);
+        assert_eq!(
+            compare_configs(&no_dsc, &with_dsc, &policy, NATIVE),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_configs(&with_dsc, &no_dsc, &policy, NATIVE),
+            Ordering::Greater
+        );
     }
 
     #[test]
@@ -329,18 +369,36 @@ mod tests {
         let policy = NegotiationPolicy::BEST_PERFORMANCE;
 
         // DSC config has higher refresh — it should rank first since DSC is not penalized.
-        assert_eq!(compare_configs(&with_dsc, &no_dsc, &policy, NATIVE), Ordering::Less);
+        assert_eq!(
+            compare_configs(&with_dsc, &no_dsc, &policy, NATIVE),
+            Ordering::Less
+        );
     }
 
     #[test]
     fn native_resolution_ranked_first() {
-        let uhd = config(3840, 2160, 60, false, ColorFormat::Rgb444, ColorBitDepth::Depth8, HdmiForumFrl::NotSupported, false);
+        let uhd = config(
+            3840,
+            2160,
+            60,
+            false,
+            ColorFormat::Rgb444,
+            ColorBitDepth::Depth8,
+            HdmiForumFrl::NotSupported,
+            false,
+        );
         let fhd = base();
         let native_pixels = pixel_area(&uhd.mode); // 4K is native
         let policy = NegotiationPolicy::BEST_QUALITY;
 
-        assert_eq!(compare_configs(&uhd, &fhd, &policy, native_pixels), Ordering::Less);
-        assert_eq!(compare_configs(&fhd, &uhd, &policy, native_pixels), Ordering::Greater);
+        assert_eq!(
+            compare_configs(&uhd, &fhd, &policy, native_pixels),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_configs(&fhd, &uhd, &policy, native_pixels),
+            Ordering::Greater
+        );
     }
 
     #[test]
@@ -348,65 +406,116 @@ mod tests {
         // Both configs share the same pixel area, so both are "native" and the
         // native-resolution criterion yields Equal. The next criterion (bit depth
         // under BEST_QUALITY) must then decide the order.
-        let depth10 = NegotiatedConfig { bit_depth: ColorBitDepth::Depth10, ..base() };
+        let depth10 = NegotiatedConfig {
+            bit_depth: ColorBitDepth::Depth10,
+            ..base()
+        };
         let depth8 = base();
         let policy = NegotiationPolicy::BEST_QUALITY; // prefer_native_resolution = true
         let native_pixels = NATIVE; // both configs match
 
-        assert_eq!(compare_configs(&depth10, &depth8, &policy, native_pixels), Ordering::Less);
-        assert_eq!(compare_configs(&depth8, &depth10, &policy, native_pixels), Ordering::Greater);
+        assert_eq!(
+            compare_configs(&depth10, &depth8, &policy, native_pixels),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_configs(&depth8, &depth10, &policy, native_pixels),
+            Ordering::Greater
+        );
     }
 
     #[test]
     fn color_fidelity_prefers_higher_depth() {
-        let depth10 = NegotiatedConfig { bit_depth: ColorBitDepth::Depth10, ..base() };
+        let depth10 = NegotiatedConfig {
+            bit_depth: ColorBitDepth::Depth10,
+            ..base()
+        };
         let depth8 = base();
         let policy = NegotiationPolicy::BEST_QUALITY;
 
-        assert_eq!(compare_configs(&depth10, &depth8, &policy, NATIVE), Ordering::Less);
-        assert_eq!(compare_configs(&depth8, &depth10, &policy, NATIVE), Ordering::Greater);
+        assert_eq!(
+            compare_configs(&depth10, &depth8, &policy, NATIVE),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_configs(&depth8, &depth10, &policy, NATIVE),
+            Ordering::Greater
+        );
     }
 
     #[test]
     fn color_fidelity_prefers_rgb_over_ycbcr444() {
         let rgb = base(); // Rgb444
-        let ycbcr = NegotiatedConfig { color_encoding: ColorFormat::YCbCr444, ..base() };
+        let ycbcr = NegotiatedConfig {
+            color_encoding: ColorFormat::YCbCr444,
+            ..base()
+        };
         let policy = NegotiationPolicy::BEST_QUALITY;
 
-        assert_eq!(compare_configs(&rgb, &ycbcr, &policy, NATIVE), Ordering::Less);
-        assert_eq!(compare_configs(&ycbcr, &rgb, &policy, NATIVE), Ordering::Greater);
+        assert_eq!(
+            compare_configs(&rgb, &ycbcr, &policy, NATIVE),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_configs(&ycbcr, &rgb, &policy, NATIVE),
+            Ordering::Greater
+        );
     }
 
     #[test]
     fn color_fidelity_equal_depth_falls_through_to_format() {
         // Same bit depth; color format quality must break the tie under BEST_QUALITY.
         let rgb = base(); // Rgb444
-        let ycbcr = NegotiatedConfig { color_encoding: ColorFormat::YCbCr444, ..base() };
+        let ycbcr = NegotiatedConfig {
+            color_encoding: ColorFormat::YCbCr444,
+            ..base()
+        };
         let policy = NegotiationPolicy::BEST_QUALITY;
 
-        assert_eq!(compare_configs(&rgb, &ycbcr, &policy, NATIVE), Ordering::Less);
-        assert_eq!(compare_configs(&ycbcr, &rgb, &policy, NATIVE), Ordering::Greater);
+        assert_eq!(
+            compare_configs(&rgb, &ycbcr, &policy, NATIVE),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_configs(&ycbcr, &rgb, &policy, NATIVE),
+            Ordering::Greater
+        );
     }
 
     #[test]
     fn color_fidelity_equal_depth_equal_format_falls_through_to_refresh() {
         // Same bit depth and color format; refresh rate must break the tie under BEST_QUALITY.
-        let hz120 = NegotiatedConfig { mode: VideoMode::new(1920, 1080, 120, false), ..base() };
+        let hz120 = NegotiatedConfig {
+            mode: VideoMode::new(1920, 1080, 120, false),
+            ..base()
+        };
         let hz60 = base();
         let policy = NegotiationPolicy::BEST_QUALITY;
 
-        assert_eq!(compare_configs(&hz120, &hz60, &policy, NATIVE), Ordering::Less);
-        assert_eq!(compare_configs(&hz60, &hz120, &policy, NATIVE), Ordering::Greater);
+        assert_eq!(
+            compare_configs(&hz120, &hz60, &policy, NATIVE),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_configs(&hz60, &hz120, &policy, NATIVE),
+            Ordering::Greater
+        );
     }
 
     #[test]
     fn color_fidelity_prefers_higher_refresh_as_tiebreak() {
         // Same depth and format; refresh rate breaks the tie under BEST_QUALITY.
-        let hz120 = NegotiatedConfig { mode: VideoMode::new(1920, 1080, 120, false), ..base() };
+        let hz120 = NegotiatedConfig {
+            mode: VideoMode::new(1920, 1080, 120, false),
+            ..base()
+        };
         let hz60 = base();
         let policy = NegotiationPolicy::BEST_QUALITY;
 
-        assert_eq!(compare_configs(&hz120, &hz60, &policy, NATIVE), Ordering::Less);
+        assert_eq!(
+            compare_configs(&hz120, &hz60, &policy, NATIVE),
+            Ordering::Less
+        );
     }
 
     #[test]
@@ -418,86 +527,158 @@ mod tests {
             bit_depth: ColorBitDepth::Depth8,
             ..base()
         };
-        let hz60_10bit = NegotiatedConfig { bit_depth: ColorBitDepth::Depth10, ..base() };
+        let hz60_10bit = NegotiatedConfig {
+            bit_depth: ColorBitDepth::Depth10,
+            ..base()
+        };
         let policy = NegotiationPolicy::BEST_PERFORMANCE;
         let _ = hz120_8bit;
 
-        assert_eq!(compare_configs(&hz120, &hz60_10bit, &policy, NATIVE), Ordering::Less);
-        assert_eq!(compare_configs(&hz60_10bit, &hz120, &policy, NATIVE), Ordering::Greater);
+        assert_eq!(
+            compare_configs(&hz120, &hz60_10bit, &policy, NATIVE),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_configs(&hz60_10bit, &hz120, &policy, NATIVE),
+            Ordering::Greater
+        );
     }
 
     #[test]
     fn performance_equal_refresh_falls_through_to_depth() {
         // Same refresh rate; bit depth must break the tie under BEST_PERFORMANCE.
-        let depth10 = NegotiatedConfig { bit_depth: ColorBitDepth::Depth10, ..base() };
+        let depth10 = NegotiatedConfig {
+            bit_depth: ColorBitDepth::Depth10,
+            ..base()
+        };
         let depth8 = base();
         let policy = NegotiationPolicy::BEST_PERFORMANCE;
 
-        assert_eq!(compare_configs(&depth10, &depth8, &policy, NATIVE), Ordering::Less);
-        assert_eq!(compare_configs(&depth8, &depth10, &policy, NATIVE), Ordering::Greater);
+        assert_eq!(
+            compare_configs(&depth10, &depth8, &policy, NATIVE),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_configs(&depth8, &depth10, &policy, NATIVE),
+            Ordering::Greater
+        );
     }
 
     #[test]
     fn performance_equal_refresh_equal_depth_falls_through_to_format() {
         // Same refresh rate and bit depth; color format quality must break the tie.
         let rgb = base(); // Rgb444
-        let ycbcr = NegotiatedConfig { color_encoding: ColorFormat::YCbCr444, ..base() };
+        let ycbcr = NegotiatedConfig {
+            color_encoding: ColorFormat::YCbCr444,
+            ..base()
+        };
         let policy = NegotiationPolicy::BEST_PERFORMANCE;
 
-        assert_eq!(compare_configs(&rgb, &ycbcr, &policy, NATIVE), Ordering::Less);
-        assert_eq!(compare_configs(&ycbcr, &rgb, &policy, NATIVE), Ordering::Greater);
+        assert_eq!(
+            compare_configs(&rgb, &ycbcr, &policy, NATIVE),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_configs(&ycbcr, &rgb, &policy, NATIVE),
+            Ordering::Greater
+        );
     }
 
     #[test]
     fn power_saving_prefers_low_refresh() {
         let hz60 = base();
-        let hz120 = NegotiatedConfig { mode: VideoMode::new(1920, 1080, 120, false), ..base() };
+        let hz120 = NegotiatedConfig {
+            mode: VideoMode::new(1920, 1080, 120, false),
+            ..base()
+        };
         let policy = NegotiationPolicy::POWER_SAVING;
 
-        assert_eq!(compare_configs(&hz60, &hz120, &policy, NATIVE), Ordering::Less);
-        assert_eq!(compare_configs(&hz120, &hz60, &policy, NATIVE), Ordering::Greater);
+        assert_eq!(
+            compare_configs(&hz60, &hz120, &policy, NATIVE),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_configs(&hz120, &hz60, &policy, NATIVE),
+            Ordering::Greater
+        );
     }
 
     #[test]
     fn power_saving_prefers_low_depth() {
         let depth8 = base();
-        let depth10 = NegotiatedConfig { bit_depth: ColorBitDepth::Depth10, ..base() };
+        let depth10 = NegotiatedConfig {
+            bit_depth: ColorBitDepth::Depth10,
+            ..base()
+        };
         let policy = NegotiationPolicy::POWER_SAVING;
 
-        assert_eq!(compare_configs(&depth8, &depth10, &policy, NATIVE), Ordering::Less);
-        assert_eq!(compare_configs(&depth10, &depth8, &policy, NATIVE), Ordering::Greater);
+        assert_eq!(
+            compare_configs(&depth8, &depth10, &policy, NATIVE),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_configs(&depth10, &depth8, &policy, NATIVE),
+            Ordering::Greater
+        );
     }
 
     #[test]
     fn power_saving_equal_refresh_falls_through_to_depth() {
         // Same refresh rate; lower bit depth must break the tie under POWER_SAVING.
         let depth8 = base();
-        let depth10 = NegotiatedConfig { bit_depth: ColorBitDepth::Depth10, ..base() };
+        let depth10 = NegotiatedConfig {
+            bit_depth: ColorBitDepth::Depth10,
+            ..base()
+        };
         let policy = NegotiationPolicy::POWER_SAVING;
 
-        assert_eq!(compare_configs(&depth8, &depth10, &policy, NATIVE), Ordering::Less);
-        assert_eq!(compare_configs(&depth10, &depth8, &policy, NATIVE), Ordering::Greater);
+        assert_eq!(
+            compare_configs(&depth8, &depth10, &policy, NATIVE),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_configs(&depth10, &depth8, &policy, NATIVE),
+            Ordering::Greater
+        );
     }
 
     #[test]
     fn power_saving_equal_refresh_equal_depth_falls_through_to_format() {
         // Same refresh rate and bit depth; simpler color format must break the tie under POWER_SAVING.
-        let y420 = NegotiatedConfig { color_encoding: ColorFormat::YCbCr420, ..base() };
+        let y420 = NegotiatedConfig {
+            color_encoding: ColorFormat::YCbCr420,
+            ..base()
+        };
         let rgb = base();
         let policy = NegotiationPolicy::POWER_SAVING;
 
-        assert_eq!(compare_configs(&y420, &rgb, &policy, NATIVE), Ordering::Less);
-        assert_eq!(compare_configs(&rgb, &y420, &policy, NATIVE), Ordering::Greater);
+        assert_eq!(
+            compare_configs(&y420, &rgb, &policy, NATIVE),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_configs(&rgb, &y420, &policy, NATIVE),
+            Ordering::Greater
+        );
     }
 
     #[test]
     fn power_saving_prefers_simpler_format() {
-        let y420 = NegotiatedConfig { color_encoding: ColorFormat::YCbCr420, ..base() };
+        let y420 = NegotiatedConfig {
+            color_encoding: ColorFormat::YCbCr420,
+            ..base()
+        };
         let rgb = base();
         let policy = NegotiationPolicy::POWER_SAVING;
 
-        assert_eq!(compare_configs(&y420, &rgb, &policy, NATIVE), Ordering::Less);
-        assert_eq!(compare_configs(&rgb, &y420, &policy, NATIVE), Ordering::Greater);
+        assert_eq!(
+            compare_configs(&y420, &rgb, &policy, NATIVE),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_configs(&rgb, &y420, &policy, NATIVE),
+            Ordering::Greater
+        );
     }
 
     #[test]
@@ -509,50 +690,91 @@ mod tests {
         };
         let policy = NegotiationPolicy::BEST_QUALITY;
 
-        assert_eq!(compare_configs(&progressive, &interlaced, &policy, NATIVE), Ordering::Less);
-        assert_eq!(compare_configs(&interlaced, &progressive, &policy, NATIVE), Ordering::Greater);
+        assert_eq!(
+            compare_configs(&progressive, &interlaced, &policy, NATIVE),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_configs(&interlaced, &progressive, &policy, NATIVE),
+            Ordering::Greater
+        );
     }
 
     #[test]
     fn lower_frl_rate_tiebreak() {
-        let low_frl = NegotiatedConfig { frl_rate: HdmiForumFrl::Rate3Gbps3Lanes, ..base() };
-        let high_frl = NegotiatedConfig { frl_rate: HdmiForumFrl::Rate6Gbps3Lanes, ..base() };
+        let low_frl = NegotiatedConfig {
+            frl_rate: HdmiForumFrl::Rate3Gbps3Lanes,
+            ..base()
+        };
+        let high_frl = NegotiatedConfig {
+            frl_rate: HdmiForumFrl::Rate6Gbps3Lanes,
+            ..base()
+        };
         let policy = NegotiationPolicy::BEST_QUALITY;
 
-        assert_eq!(compare_configs(&low_frl, &high_frl, &policy, NATIVE), Ordering::Less);
-        assert_eq!(compare_configs(&high_frl, &low_frl, &policy, NATIVE), Ordering::Greater);
+        assert_eq!(
+            compare_configs(&low_frl, &high_frl, &policy, NATIVE),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_configs(&high_frl, &low_frl, &policy, NATIVE),
+            Ordering::Greater
+        );
     }
 
     #[test]
     fn resolution_area_tiebreak() {
         // 1920×1200 has more pixels than 1920×1080; both are "non-native" (native = 4K here).
-        let wider = config(1920, 1200, 60, false, ColorFormat::Rgb444, ColorBitDepth::Depth8, HdmiForumFrl::NotSupported, false);
+        let wider = config(
+            1920,
+            1200,
+            60,
+            false,
+            ColorFormat::Rgb444,
+            ColorBitDepth::Depth8,
+            HdmiForumFrl::NotSupported,
+            false,
+        );
         let narrower = base();
         let native_pixels = pixel_area(&VideoMode::new(3840, 2160, 60, false)); // 4K is native
         let policy = NegotiationPolicy::BEST_QUALITY;
 
-        assert_eq!(compare_configs(&wider, &narrower, &policy, native_pixels), Ordering::Less);
-        assert_eq!(compare_configs(&narrower, &wider, &policy, native_pixels), Ordering::Greater);
+        assert_eq!(
+            compare_configs(&wider, &narrower, &policy, native_pixels),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_configs(&narrower, &wider, &policy, native_pixels),
+            Ordering::Greater
+        );
     }
 
     // --- record_preferences ---
 
     fn has_preference(config: &NegotiatedConfig<Warning>, rule: &str) -> bool {
-        config.trace.steps.iter().any(|step| {
-            matches!(step, DecisionStep::PreferenceApplied { rule: r } if r == rule)
-        })
+        config
+            .trace
+            .steps
+            .iter()
+            .any(|step| matches!(step, DecisionStep::PreferenceApplied { rule: r } if r == rule))
     }
 
     #[test]
     fn trace_records_dsc_penalty() {
-        let mut c = NegotiatedConfig { dsc_required: true, ..base() };
+        let mut c = NegotiatedConfig {
+            dsc_required: true,
+            ..base()
+        };
         record_preferences(&mut c, &NegotiationPolicy::BEST_QUALITY, NATIVE);
         assert!(has_preference(&c, "DSC penalized"));
     }
 
     #[test]
     fn trace_no_dsc_penalty_when_not_penalized() {
-        let mut c = NegotiatedConfig { dsc_required: true, ..base() };
+        let mut c = NegotiatedConfig {
+            dsc_required: true,
+            ..base()
+        };
         record_preferences(&mut c, &NegotiationPolicy::BEST_PERFORMANCE, NATIVE); // penalize_dsc=false
         assert!(!has_preference(&c, "DSC penalized"));
     }
@@ -582,7 +804,10 @@ mod tests {
     #[test]
     fn trace_no_native_resolution_when_not_preferred() {
         let mut c = base();
-        let policy = NegotiationPolicy { prefer_native_resolution: false, ..NegotiationPolicy::BEST_QUALITY };
+        let policy = NegotiationPolicy {
+            prefer_native_resolution: false,
+            ..NegotiationPolicy::BEST_QUALITY
+        };
         record_preferences(&mut c, &policy, NATIVE);
         assert!(!has_preference(&c, "native resolution preferred"));
     }
@@ -632,5 +857,96 @@ mod tests {
         let policy = NegotiationPolicy::BEST_QUALITY;
 
         assert_eq!(compare_configs(&a, &b, &policy, NATIVE), Ordering::Equal);
+    }
+
+    // --- DefaultRanker::rank() integration ---
+
+    #[test]
+    fn rank_empty_returns_empty() {
+        let result = DefaultRanker.rank(Vec::new(), &NegotiationPolicy::BEST_QUALITY);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn rank_single_config_appends_trace() {
+        // A single config should be returned with preference steps recorded on its trace.
+        let configs = alloc::vec![base()];
+        let result = DefaultRanker.rank(configs, &NegotiationPolicy::BEST_QUALITY);
+        assert_eq!(result.len(), 1);
+        assert!(!result[0].trace.steps.is_empty());
+    }
+
+    #[test]
+    fn rank_orders_multiple_configs() {
+        // Three configs at the same resolution; expected order under BEST_QUALITY:
+        // 1. 10-bit no DSC, 2. 8-bit no DSC, 3. 8-bit with DSC.
+        // Submitted in reverse order to confirm sorting actually reorders them.
+        let configs = alloc::vec![
+            NegotiatedConfig {
+                dsc_required: true,
+                ..base()
+            },
+            base(),
+            NegotiatedConfig {
+                bit_depth: ColorBitDepth::Depth10,
+                ..base()
+            },
+        ];
+        let result = DefaultRanker.rank(configs, &NegotiationPolicy::BEST_QUALITY);
+
+        assert_eq!(result[0].bit_depth, ColorBitDepth::Depth10);
+        assert!(!result[0].dsc_required);
+        assert_eq!(result[1].bit_depth, ColorBitDepth::Depth8);
+        assert!(!result[1].dsc_required);
+        assert!(result[2].dsc_required);
+    }
+
+    #[test]
+    fn rank_derives_native_pixels_from_accepted_set() {
+        // The highest-resolution config in the set should be identified as native and
+        // receive a "native resolution preferred" trace step; the lower-resolution config
+        // should not — even though prefer_native_resolution is true for both.
+        let uhd = config(
+            3840,
+            2160,
+            60,
+            false,
+            ColorFormat::Rgb444,
+            ColorBitDepth::Depth8,
+            HdmiForumFrl::NotSupported,
+            false,
+        );
+        let fhd = base(); // 1920×1080
+
+        let result = DefaultRanker.rank(alloc::vec![fhd, uhd], &NegotiationPolicy::BEST_QUALITY);
+
+        // UHD is native, so it ranks first.
+        assert_eq!(result[0].mode.width, 3840);
+
+        // Only the native config should carry the native-resolution preference step.
+        assert!(has_preference(&result[0], "native resolution preferred"));
+        assert!(!has_preference(&result[1], "native resolution preferred"));
+    }
+
+    #[test]
+    fn rank_records_preferences_on_all_configs() {
+        // Every returned config should have at least the quality-dimension step recorded,
+        // regardless of its position in the ranked list.
+        let configs = alloc::vec![
+            NegotiatedConfig {
+                bit_depth: ColorBitDepth::Depth10,
+                ..base()
+            },
+            base(),
+            NegotiatedConfig {
+                color_encoding: ColorFormat::YCbCr420,
+                ..base()
+            },
+        ];
+        let result = DefaultRanker.rank(configs, &NegotiationPolicy::BEST_QUALITY);
+
+        for c in &result {
+            assert!(has_preference(c, "color fidelity preferred"));
+        }
     }
 }
