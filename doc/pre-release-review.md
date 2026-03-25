@@ -29,18 +29,17 @@ CTA modes without DTDs.
 
 ---
 
-### C2 — `TmdsClockCheck` emits the wrong violation variant
+### C2 — `TmdsClockCheck` emits the wrong violation variant ✓ resolved
 
-**File:** `src/engine/checks/timing.rs:153`, `src/output/warning.rs`
+**File:** `src/engine/checks/timing.rs`, `src/output/warning.rs`
 **Severity:** Medium
 
-When the TMDS character rate exceeds the ceiling, `TmdsClockCheck` returns
-`Violation::PixelClockExceeded`. The variant name, error message, and field names all say
-"pixel clock" when the failing quantity is the TMDS character rate. Diagnostic tools and
-humans reading violation output will misattribute the cause.
+When the TMDS character rate exceeded the ceiling, `TmdsClockCheck` returned
+`Violation::PixelClockExceeded`. The variant name, error message, and field names all said
+"pixel clock" when the failing quantity is the TMDS character rate.
 
-**Action:** Add `Violation::TmdsClockExceeded { required_mhz: u32, limit_mhz: u32 }` and use
-it in `TmdsClockCheck`.
+**Resolution:** Added `Violation::TmdsClockExceeded { required_mhz: u32, limit_mhz: u32 }`
+and updated `TmdsClockCheck` to emit it. All affected tests updated.
 
 ---
 
@@ -58,6 +57,55 @@ sink actually rejects it.
 encodings), or document the current behavior as a conservative approximation and track the
 limitation. Until fixed, the color encoding check may produce false accepts for 4:2:0 on
 non-listed modes.
+
+What the EDID data actually says
+
+There are three independent sources for YCbCr 4:2:0 capability, each with different semantics:
+
+Y420 Video Data Block (y420_vics: Vec<u8>) — these VICs support only 4:2:0. Other encodings are invalid for them. The current code ignores this entirely; the enumerator will happily emit RGB        
+candidates for these modes.
+
+Y420 Capability Map Data Block (y420_capability_map: Vec<u8>) — a bitmap over the ordered SVD list (vics: Vec<(u8, bool)>). These modes support 4:2:0 in addition to their declared encodings.        
+Resolving this is mechanical: bit N of the bitmap → vics[N] → VIC number.
+
+HF-SCDB deep color flags (dc_30bit_420, dc_36bit_420, dc_48bit_420) — display-level; declare which bit depths are supported for 4:2:0 where it applies. Not a mode list.
+
+The current design only has color_capabilities.ycbcr420: ColorBitDepths, which flattens all three into a per-display bit depth set. This loses the mode dimension entirely and conflates deep color   
+depth capability with mode eligibility.
+                                                                                                                                                                                                        
+---                                                       
+Proposed model
+
+Two new fields on SinkCapabilities:
+
+/// Modes that support *only* YCbCr 4:2:0 (from the Y420 Video Data Block).
+/// Other color encodings must be rejected for these modes.                                                                                                                                           
+pub ycbcr420_exclusive_modes: SupportedModes,
+
+/// Modes that *also* support YCbCr 4:2:0 (from the Y420 Capability Map Data Block).                                                                                                                  
+/// Other encodings remain valid; 4:2:0 is an additional option.
+pub ycbcr420_capable_modes: SupportedModes,
+
+color_capabilities.ycbcr420 stays but its role narrows to bit depth capability (from HF-SCDB), used once mode eligibility is established.
+
+ColorEncodingCheck gains three cases for YCbCr420:
+1. Candidate mode is in ycbcr420_exclusive_modes or ycbcr420_capable_modes → allowed
+2. Neither list is populated and color_capabilities.ycbcr420 is non-empty → allowed (fallback, current behavior, with a warning)
+3. Otherwise → ColorEncodingUnsupported
+
+It also needs a new check (or integration into ColorEncodingCheck): if the candidate mode is in ycbcr420_exclusive_modes and the encoding is not YCbCr420 → rejection, new                            
+Violation::EncodingRestrictedToYCbCr420.
+                                                                                                                                                                                                        
+---                                                                                                                                                                                                   
+The VIC resolution question
+
+sink_capabilities_from_display needs to turn VIC numbers into VideoMode structs. For the CMB this is y420_capability_map bitmap × vics → VIC numbers. For the VDB it's y420_vics directly. Both end at
+VIC numbers.
+
+The comment on vics says "VICs beyond the range of the built-in lookup table are included here but do not produce an entry
+in DisplayCapabilities::supported_modes".
+
+Resolution is straightforward. The VIC table is in display-types, and it is public: display_types::cea861::vic_table pub fn vic_to_mode 
 
 ---
 
