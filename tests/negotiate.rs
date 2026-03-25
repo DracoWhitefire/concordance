@@ -2,6 +2,10 @@
 //!
 //! Each test exercises the full `NegotiatorBuilder::default().negotiate()` pipeline
 //! end-to-end, from capability construction through constraint checking and ranking.
+//!
+//! Gated on `alloc`/`std` because the negotiation pipeline is not available on
+//! bare-metal no-alloc targets.
+#![cfg(any(feature = "alloc", feature = "std"))]
 
 use concordance::ranker::policy::NegotiationPolicy;
 use concordance::{

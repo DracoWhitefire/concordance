@@ -152,7 +152,7 @@ where
         }
     }
 }
-#[cfg(test)]
+#[cfg(all(test, any(feature = "alloc", feature = "std")))]
 mod tests {
     use super::*;
     use crate::diagnostic::Diagnostic;
