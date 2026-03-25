@@ -1,0 +1,16 @@
+[package]
+name = "negotiate"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies.concordance]
+path = "../.."
+features = ["std"]
+
+[dependencies.piaf]
+version = "0.4.0"
+features = ["std"]
+
+[dependencies.display-types]
+version = "0.2.2"

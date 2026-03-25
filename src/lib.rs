@@ -10,7 +10,7 @@
 //! - **`alloc`** — enables the ranked iterator, `ReasoningTrace`, and `DefaultEnumerator`.
 //! - **`serde`** — derives `Serialize`/`Deserialize` for all public types.
 //!
-//! Without `alloc`, [`is_config_viable`], [`CandidateEnumerator`], and
+//! Without `alloc`, [`is_config_viable`], [`enumerator::CandidateEnumerator`], and
 //! [`SliceEnumerator`][enumerator::SliceEnumerator] are available.
 #![no_std]
 #![forbid(unsafe_code)]

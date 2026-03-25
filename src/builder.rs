@@ -6,6 +6,7 @@ use crate::engine::rule::{ConstraintRule, Layered};
 use crate::engine::{ConstraintEngine, DefaultConstraintEngine};
 use crate::enumerator::{CandidateEnumerator, DefaultEnumerator};
 use crate::output::config::NegotiatedConfig;
+use crate::output::trace::ReasoningTrace;
 use crate::ranker::policy::NegotiationPolicy;
 use crate::ranker::{ConfigRanker, DefaultRanker};
 use crate::types::{CableCapabilities, SinkCapabilities, SourceCapabilities};
@@ -117,8 +118,37 @@ where
         source: &SourceCapabilities,
         cable: &CableCapabilities,
     ) -> Vec<NegotiatedConfig<E::Warning>> {
-        // TODO: implement full pipeline: enumerate → check → deduplicate → rank
-        let _candidates = self.enumerator.enumerate(sink, source, cable);
-        Vec::new()
+        let mut accepted: Vec<NegotiatedConfig<E::Warning>> = Vec::new();
+
+        for config in self.enumerator.enumerate(sink, source, cable) {
+            let Ok(warnings) = self.engine.check(sink, source, cable, &config) else {
+                continue;
+            };
+
+            let negotiated = NegotiatedConfig {
+                mode: config.mode.clone(),
+                color_encoding: config.color_encoding,
+                bit_depth: config.bit_depth,
+                frl_rate: config.frl_rate,
+                dsc_required: config.dsc_enabled,
+                vrr_applicable: false,
+                warnings,
+                trace: ReasoningTrace::new(),
+            };
+
+            // O(n²) dedup — candidate lists are small enough that this is acceptable.
+            let is_dup = accepted.iter().any(|c| {
+                c.mode == negotiated.mode
+                    && c.color_encoding == negotiated.color_encoding
+                    && c.bit_depth == negotiated.bit_depth
+                    && c.frl_rate == negotiated.frl_rate
+                    && c.dsc_required == negotiated.dsc_required
+            });
+            if !is_dup {
+                accepted.push(negotiated);
+            }
+        }
+
+        self.ranker.rank(accepted, &self.policy)
     }
 }
