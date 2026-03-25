@@ -54,6 +54,13 @@ pub enum Violation {
     #[error("color encoding not supported by sink")]
     ColorEncodingUnsupported,
 
+    /// A non-YCbCr 4:2:0 encoding was requested for a mode that only supports YCbCr 4:2:0.
+    ///
+    /// The mode appears in the sink's Y420 Video Data Block, which declares it as a
+    /// YCbCr 4:2:0-only mode per CTA-861-H §7.5.11.
+    #[error("mode only supports YCbCr 4:2:0; other encodings are not valid for this mode")]
+    EncodingRestrictedToYCbCr420,
+
     /// The selected bit depth is not supported by the sink.
     #[error("bit depth not supported by sink")]
     BitDepthUnsupported,
