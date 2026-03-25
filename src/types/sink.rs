@@ -172,7 +172,7 @@ mod tests {
     use display_types::cea861::{
         Cea861Capabilities, Cea861Flags, HdmiForumFrl, HdmiForumSinkCap, HdmiVsdb, HdmiVsdbFlags,
     };
-    use display_types::{ColorBitDepth, ColorBitDepths, VideoMode};
+    use display_types::{ColorBitDepth, VideoMode};
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
