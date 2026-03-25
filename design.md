@@ -262,6 +262,64 @@ Named policy presets (`BestQuality`, `BestPerformance`, `PowerSaving`) are a thi
 top of the same ranked iterator. Custom `NegotiationPolicy` implementations can encode
 platform-specific priorities (e.g. always prefer a specific refresh rate, or penalize DSC).
 
+#### Default ranking algorithm
+
+`DefaultRanker` implements a stable multi-criterion sort. The comparison function applies
+criteria in priority order; the first non-equal result determines the relative order of two
+configs. Higher-ranked configs appear earlier in the output.
+
+**Native resolution detection.** The `rank` signature does not receive capabilities, so
+native resolution is inferred from the accepted set: the mode with the greatest pixel area
+(`width × height`) is treated as the native resolution. This is the correct heuristic —
+the display's native resolution is its highest declared mode, and any such mode in the
+accepted set has already passed the constraint engine.
+
+**Sort criteria, in order:**
+
+| # | Criterion                     | Direction         | Controlled by                                  |
+|---|-------------------------------|-------------------|------------------------------------------------|
+| 1 | DSC required                  | `false` first     | `penalize_dsc`                                 |
+| 2 | Native resolution             | native first      | `prefer_native_resolution`                     |
+| 3 | Quality/performance dimension | see below         | `prefer_color_fidelity`, `prefer_high_refresh` |
+| 4 | Interlaced                    | progressive first | always                                         |
+| 5 | FRL rate                      | lower first       | always                                         |
+| 6 | Resolution area               | larger first      | always (tiebreaker)                            |
+
+**Quality/performance dimension (criterion 3).** The two policy flags jointly determine
+which sub-criteria are applied and in what order:
+
+- `prefer_color_fidelity = true` — bit depth (desc), color format quality (desc), refresh
+  rate (desc). Color fidelity is the primary driver; refresh rate breaks ties within the
+  same quality level.
+- `prefer_high_refresh = true`, `prefer_color_fidelity = false` — refresh rate (desc), bit
+  depth (desc), color format quality (desc). Refresh rate is the primary driver.
+- Both false (power saving) — refresh rate (asc), bit depth (asc), color format quality
+  (asc, simpler first). Lower bandwidth and lower power draw are preferred; the direction
+  of all three sub-criteria is reversed.
+
+**Color format quality.** Ranked 3 → 0: `Rgb444` (3), `YCbCr444` (2), `YCbCr422` (1),
+`YCbCr420` (0). RGB ranks above YCbCr444 at the same chroma resolution because it requires
+no color-space conversion at the sink. In power-saving mode the order is reversed:
+`YCbCr420` is preferred because it carries the least chroma data.
+
+**DSC penalty.** DSC is "visually lossless" compression but is still lossy: the sink
+reconstructs rather than preserves original pixel data. An uncompressed transport at the
+same resolution, format, and depth is strictly preferable. The penalty pushes DSC configs
+behind their uncompressed equivalents so they act as fallbacks, not first choices.
+`BEST_PERFORMANCE` disables the penalty: a high-refresh DSC mode may legitimately rank
+above a lower-refresh uncompressed one when performance is the goal.
+
+**FRL rate tiebreaker.** When two configs are otherwise equal, the one using the lower FRL
+rate is ranked first. A lower FRL rate achieves the same result at reduced link complexity
+and power; there is no reason to prefer a higher tier when a lower one suffices.
+
+**ReasoningTrace.** After sorting, `DefaultRanker` appends a `PreferenceApplied` step to
+each config describing the criteria that apply to that specific config (e.g.
+`"DSC penalized"`, `"native resolution preferred"`, `"progressive mode preferred"`). These
+are per-config facts, not relative comparisons — they give a diagnostic tool enough context
+to explain why a config has the characteristics it does without requiring knowledge of the
+full ranked list.
+
 ## NegotiatedConfig and ReasoningTrace
 
 `NegotiatedConfig` is a pure data struct — it holds resolved values. Helpers that compute

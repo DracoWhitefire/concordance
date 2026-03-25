@@ -1,3 +1,5 @@
+[workspace]
+
 [package]
 name = "negotiate"
 version = "0.0.0"

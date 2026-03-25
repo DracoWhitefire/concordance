@@ -70,24 +70,31 @@ pub trait ConstraintEngine {
 /// enum. Callers that need a richer violation hierarchy can define their own type
 /// and use it here, as long as it implements `From<`[`Violation`]`>`:
 ///
-/// ```rust,ignore
-/// #[derive(Debug, Display)]
+/// ```
+/// # use concordance::engine::{DefaultConstraintEngine, rule::{CheckList, ConstraintRule}};
+/// # use concordance::output::warning::Violation;
+/// # use concordance::types::{CandidateConfig, SinkCapabilities, SourceCapabilities, CableCapabilities};
+/// # use core::fmt;
+/// #[derive(Debug)]
 /// enum MyViolation {
 ///     Builtin(Violation),
 ///     HdrCertificationFailed,
 /// }
-///
+/// # impl fmt::Display for MyViolation {
+/// #     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "violation") }
+/// # }
 /// impl From<Violation> for MyViolation {
 ///     fn from(v: Violation) -> Self { MyViolation::Builtin(v) }
 /// }
+/// # struct MyHdrCheck;
+/// # impl ConstraintRule<MyViolation> for MyHdrCheck {
+/// #     fn display_name(&self) -> &'static str { "my_hdr_check" }
+/// #     fn check(&self, _: &SinkCapabilities, _: &SourceCapabilities,
+/// #              _: &CableCapabilities, _: &CandidateConfig<'_>) -> Option<MyViolation> { None }
+/// # }
+/// static MY_CHECKS: CheckList<MyViolation> = &[&MyHdrCheck];
 ///
-/// static MY_CHECKS: CheckList<MyViolation> = &[
-///     &FrlCeilingCheck, &TmdsClockCheck, /* ... */ &MyHdrCheck,
-/// ];
-///
-/// NegotiatorBuilder::default()
-///     .with_engine(DefaultConstraintEngine::<MyViolation>::with_checks(MY_CHECKS))
-///     .with_extra_rule(AnotherMyRule)
+/// let _engine = DefaultConstraintEngine::<MyViolation>::with_checks(MY_CHECKS);
 /// ```
 ///
 /// For the common case — built-in violations only — `DefaultConstraintEngine::default()`
@@ -120,9 +127,10 @@ impl<V: Diagnostic> DefaultConstraintEngine<V> {
     /// The slice must be `'static` to support no-alloc targets. Check sets are
     /// always compile-time concerns; use a `static` binding:
     ///
-    /// ```rust,ignore
+    /// ```
     /// use concordance::engine::checks::{FrlCeilingCheck, TmdsClockCheck};
     /// use concordance::engine::rule::CheckList;
+    /// use concordance::engine::DefaultConstraintEngine;
     /// use concordance::output::warning::Violation;
     ///
     /// static MY_CHECKS: CheckList<Violation> = &[&FrlCeilingCheck, &TmdsClockCheck];

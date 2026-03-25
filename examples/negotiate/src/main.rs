@@ -122,21 +122,28 @@ fn main() {
             if configs.is_empty() {
                 println!("  Negotiated:   no configurations");
             } else {
-                println!("  Negotiated:   {} configuration(s)", configs.len());
                 println!(
-                    "\n  {:<20} {:<6} {:<14} {:<22} {:<5}",
-                    "Mode", "Hz", "Color", "Bit depth", "DSC"
+                    "  Negotiated:   {} configuration(s), ranked by policy",
+                    configs.len()
                 );
-                println!("  {}", "-".repeat(72));
-                for cfg in &configs {
+                println!(
+                    "\n  {:<4} {:<20} {:<6} {:<14} {:<10} {:<5}",
+                    "#", "Mode", "Hz", "Color", "Bit depth", "DSC"
+                );
+                println!("  {}", "-".repeat(64));
+                for (rank, cfg) in configs.iter().enumerate() {
                     println!(
-                        "  {:<20} {:<6} {:<14} {:<22} {:<5}",
+                        "  {:<4} {:<20} {:<6} {:<14} {:<10} {:<5}",
+                        rank + 1,
                         format!("{}x{}", cfg.mode.width, cfg.mode.height),
                         cfg.mode.refresh_rate,
                         format!("{:?}", cfg.color_encoding),
                         format!("{:?}", cfg.bit_depth),
                         if cfg.dsc_required { "yes" } else { "no" },
                     );
+                    for w in &cfg.warnings {
+                        println!("       warning: {w}");
+                    }
                 }
                 println!();
             }
