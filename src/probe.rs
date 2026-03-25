@@ -29,7 +29,7 @@ pub fn is_config_viable(
     DefaultConstraintEngine::default().check(sink, source, cable, config)
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(feature = "alloc", feature = "std")))]
 mod tests {
     use super::*;
     use display_types::cea861::HdmiForumFrl;
