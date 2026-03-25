@@ -105,7 +105,18 @@ VIC numbers.
 The comment on vics says "VICs beyond the range of the built-in lookup table are included here but do not produce an entry
 in DisplayCapabilities::supported_modes".
 
-Resolution is straightforward. The VIC table is in display-types, and it is public: display_types::cea861::vic_table pub fn vic_to_mode 
+Resolution is straightforward. The VIC table is in display-types, and it is public: display_types::cea861::vic_table pub fn vic_to_mode
+src/types/sink.rs — add two new SupportedModes fields; update sink_capabilities_from_display to populate them from VDB (direct VIC lookup) and CMB (bitmap × vics → VIC lookup); keep the existing    
+BPC_8 addition to color_capabilities.ycbcr420 (it serves BitDepthCheck).
+
+src/output/warning.rs — add Violation::EncodingRestrictedToYCbCr420 for non-4:2:0 encodings on exclusive modes.
+
+src/engine/checks/color.rs — update ColorEncodingCheck with a #[cfg(any(feature = "alloc", feature = "std"))] block that handles exclusive mode rejection and per-mode 4:2:0 eligibility with a       
+fallback for manually-constructed SinkCapabilities where both lists are empty.
+
+The no-alloc path is untouched — is_config_viable callers supply their own CandidateConfig and the check falls back to the existing display-level color_capabilities.ycbcr420 test.
+
+
 
 ---
 
