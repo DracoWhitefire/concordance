@@ -9,20 +9,23 @@ Items are grouped by type. Each has a short action note.
 
 ## Correctness
 
-### C1 — Pixel clock is always estimated
+### C1 — Pixel clock function name obscured its exact-or-estimate behavior ✓ resolved
 
-**File:** `src/engine/checks/timing.rs`, all three checks
-**Severity:** High
+**File:** `display-types/src/timing.rs`, `src/engine/checks/timing.rs`
+**Severity:** Medium (naming); Low (correctness)
 
-Every timing check — `PixelClockCheck`, `TmdsClockCheck`, and `FrlCeilingCheck` — derives the
-pixel clock from `pixel_clock_khz_cvt_rb_estimate`. Real EDIDs contain detailed timing
-descriptors with actual pixel clock values. Modes that don't use CVT-RB blanking (GTF modes,
-custom timings on gaming panels, HDMI Forum-specified 4K/8K modes) can deviate enough to
-produce false accepts or false rejects.
+`pixel_clock_khz_cvt_rb_estimate` returned the exact DTD pixel clock when present and only
+fell back to CVT-RB estimation for modes without a Detailed Timing Descriptor. The name
+implied estimation always occurred, misleading callers about accuracy.
 
-**Action:** `CandidateConfig` should carry an optional actual pixel clock sourced from the
-detailed timing descriptor. Checks should prefer it when present and fall back to the estimate
-only when absent. Document the fallback so callers know when estimates are in use.
+The CVT-RB fallback itself under-estimates for HDMI Forum-specified CTA modes (e.g. 4K@60,
+VIC 97) by ~10–15%, which can produce false accepts in bandwidth ceiling checks. This is a
+known limitation documented in the function's doc comment; a VIC lookup table would be needed
+to fully address it.
+
+**Resolution:** Renamed to `pixel_clock_khz` in `display-types`. Doc comment updated to
+accurately describe the exact-or-estimate logic and call out the under-estimation risk for
+CTA modes without DTDs.
 
 ---
 

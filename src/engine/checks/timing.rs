@@ -2,7 +2,7 @@ use crate::diagnostic::Diagnostic;
 use crate::engine::rule::ConstraintRule;
 use crate::output::warning::Violation;
 use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
-use display_types::pixel_clock_khz_cvt_rb_estimate;
+use display_types::pixel_clock_khz;
 
 /// Checks that the requested refresh rate falls within the sink's supported range.
 pub struct RefreshRateCheck;
@@ -58,7 +58,7 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for PixelClockCheck {
         config: &CandidateConfig<'_>,
     ) -> Option<V> {
         let limit_mhz = sink.max_pixel_clock_mhz? as u32;
-        let pixel_clock_khz = pixel_clock_khz_cvt_rb_estimate(config.mode);
+        let pixel_clock_khz = pixel_clock_khz(config.mode);
         let required_mhz = pixel_clock_khz / 1000;
         if required_mhz > limit_mhz {
             Some(
@@ -95,7 +95,7 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for TmdsClockCheck {
             return None;
         }
 
-        let pixel_clock_khz = pixel_clock_khz_cvt_rb_estimate(config.mode);
+        let pixel_clock_khz = pixel_clock_khz(config.mode);
 
         // TMDS character clock depends on color encoding and bit depth.
         // YCbCr 4:2:0 halves the pixel rate; deep color multiplies it.
