@@ -262,6 +262,64 @@ Named policy presets (`BestQuality`, `BestPerformance`, `PowerSaving`) are a thi
 top of the same ranked iterator. Custom `NegotiationPolicy` implementations can encode
 platform-specific priorities (e.g. always prefer a specific refresh rate, or penalize DSC).
 
+#### Default ranking algorithm
+
+`DefaultRanker` implements a stable multi-criterion sort. The comparison function applies
+criteria in priority order; the first non-equal result determines the relative order of two
+configs. Higher-ranked configs appear earlier in the output.
+
+**Native resolution detection.** The `rank` signature does not receive capabilities, so
+native resolution is inferred from the accepted set: the mode with the greatest pixel area
+(`width × height`) is treated as the native resolution. This is the correct heuristic —
+the display's native resolution is its highest declared mode, and any such mode in the
+accepted set has already passed the constraint engine.
+
+**Sort criteria, in order:**
+
+| # | Criterion                     | Direction         | Controlled by                                  |
+|---|-------------------------------|-------------------|------------------------------------------------|
+| 1 | DSC required                  | `false` first     | `penalize_dsc`                                 |
+| 2 | Native resolution             | native first      | `prefer_native_resolution`                     |
+| 3 | Quality/performance dimension | see below         | `prefer_color_fidelity`, `prefer_high_refresh` |
+| 4 | Interlaced                    | progressive first | always                                         |
+| 5 | FRL rate                      | lower first       | always                                         |
+| 6 | Resolution area               | larger first      | always (tiebreaker)                            |
+
+**Quality/performance dimension (criterion 3).** The two policy flags jointly determine
+which sub-criteria are applied and in what order:
+
+- `prefer_color_fidelity = true` — bit depth (desc), color format quality (desc), refresh
+  rate (desc). Color fidelity is the primary driver; refresh rate breaks ties within the
+  same quality level.
+- `prefer_high_refresh = true`, `prefer_color_fidelity = false` — refresh rate (desc), bit
+  depth (desc), color format quality (desc). Refresh rate is the primary driver.
+- Both false (power saving) — refresh rate (asc), bit depth (asc), color format quality
+  (asc, simpler first). Lower bandwidth and lower power draw are preferred; the direction
+  of all three sub-criteria is reversed.
+
+**Color format quality.** Ranked 3 → 0: `Rgb444` (3), `YCbCr444` (2), `YCbCr422` (1),
+`YCbCr420` (0). RGB ranks above YCbCr444 at the same chroma resolution because it requires
+no color-space conversion at the sink. In power-saving mode the order is reversed:
+`YCbCr420` is preferred because it carries the least chroma data.
+
+**DSC penalty.** DSC is "visually lossless" compression but is still lossy: the sink
+reconstructs rather than preserves original pixel data. An uncompressed transport at the
+same resolution, format, and depth is strictly preferable. The penalty pushes DSC configs
+behind their uncompressed equivalents so they act as fallbacks, not first choices.
+`BEST_PERFORMANCE` disables the penalty: a high-refresh DSC mode may legitimately rank
+above a lower-refresh uncompressed one when performance is the goal.
+
+**FRL rate tiebreaker.** When two configs are otherwise equal, the one using the lower FRL
+rate is ranked first. A lower FRL rate achieves the same result at reduced link complexity
+and power; there is no reason to prefer a higher tier when a lower one suffices.
+
+**ReasoningTrace.** After sorting, `DefaultRanker` appends a `PreferenceApplied` step to
+each config describing the criteria that apply to that specific config (e.g.
+`"DSC penalized"`, `"native resolution preferred"`, `"progressive mode preferred"`). These
+are per-config facts, not relative comparisons — they give a diagnostic tool enough context
+to explain why a config has the characteristics it does without requiring knowledge of the
+full ranked list.
+
 ## NegotiatedConfig and ReasoningTrace
 
 `NegotiatedConfig` is a pure data struct — it holds resolved values. Helpers that compute
@@ -466,3 +524,44 @@ Important expectations:
 - **InfoFrame encoding** — signaling the negotiated configuration to the sink is handled by
   the InfoFrame library.
 - **HDCP** — out of scope for the entire stack.
+
+## Implementation Plan
+
+> Remove this section once all items are complete.
+
+### `DefaultRanker` (`src/ranker/mod.rs`)
+
+- [ ] Add private helper `fn pixel_area(mode: &VideoMode) -> u32` — `width as u32 * height as u32`.
+- [ ] Add private helper `fn color_format_quality(fmt: ColorFormat) -> u8` — returns 3/2/1/0 for
+      Rgb444/YCbCr444/YCbCr422/YCbCr420.
+- [ ] Add private `fn compare_configs(a, b, policy, native_pixels) -> Ordering` implementing
+      the multi-criterion comparison described in the ranking algorithm section above.
+- [ ] Add private `fn record_preferences(config: &mut NegotiatedConfig<Warning>, policy,
+      native_pixels)` — appends `PreferenceApplied` steps to the config's trace for each
+      criterion that applies to it.
+- [ ] Implement `DefaultRanker::rank`: compute `native_pixels` from the accepted set, sort
+      via `compare_configs`, then call `record_preferences` on each config.
+
+### Tests (inline `#[cfg(test)]` in `src/ranker/mod.rs`)
+
+- [ ] `dsc_penalized_ranked_lower` — DSC config follows non-DSC under `penalize_dsc`.
+- [ ] `dsc_not_penalized_under_performance` — DSC config is not demoted under `BEST_PERFORMANCE`.
+- [ ] `native_resolution_ranked_first` — higher-res mode ranks first under `prefer_native_resolution`.
+- [ ] `color_fidelity_prefers_higher_depth` — 10-bit before 8-bit under `BEST_QUALITY`.
+- [ ] `color_fidelity_prefers_rgb_over_ycbcr444` — `Rgb444` before `YCbCr444` at equal depth.
+- [ ] `color_format_quality_full_ordering` — `Rgb444 > YCbCr444 > YCbCr422 > YCbCr420` under
+      `BEST_QUALITY`.
+- [ ] `performance_prefers_high_refresh` — 120 Hz before 60 Hz under `BEST_PERFORMANCE` even at
+      lower bit depth.
+- [ ] `power_saving_prefers_low_refresh` — 60 Hz before 120 Hz under `POWER_SAVING`.
+- [ ] `power_saving_prefers_low_depth` — 8-bit before 10-bit under `POWER_SAVING`.
+- [ ] `power_saving_prefers_simpler_format` — `YCbCr420` before `Rgb444` under `POWER_SAVING`.
+- [ ] `progressive_before_interlaced` — progressive mode ranks above the same mode interlaced.
+- [ ] `lower_frl_rate_tiebreak` — `Rate3Gbps3Lanes` before `Rate6Gbps3Lanes` for otherwise
+      identical configs.
+- [ ] `empty_input_returns_empty` — returns empty vec without panic.
+- [ ] `single_input_returns_unchanged` — single config is returned as-is.
+- [ ] `trace_records_dsc_penalty` — `PreferenceApplied` step present on a DSC config when
+      `penalize_dsc` is set.
+- [ ] `trace_records_native_resolution` — `PreferenceApplied` step present on the native-res
+      config when `prefer_native_resolution` is set.
