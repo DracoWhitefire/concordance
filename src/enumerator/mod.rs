@@ -53,6 +53,27 @@ pub struct EnumeratorIter<'a> {
     dsc_idx: usize,
 }
 
+impl<'a> EnumeratorIter<'a> {
+    /// Returns the number of candidates not yet yielded.
+    fn remaining(&self) -> usize {
+        if self.mode_idx >= self.modes.len() {
+            return 0;
+        }
+        let dsc_rem = self.dsc_len - self.dsc_idx;
+        let frl_rem = (self.frl_len - self.frl_idx - 1) * self.dsc_len;
+        let dep_rem =
+            (self.dep_lens[self.enc_idx] - self.dep_idx - 1) * self.frl_len * self.dsc_len;
+        let enc_rem: usize = (self.enc_idx + 1..self.enc_len)
+            .map(|e| self.dep_lens[e] * self.frl_len * self.dsc_len)
+            .sum();
+        let per_mode: usize = (0..self.enc_len)
+            .map(|e| self.dep_lens[e] * self.frl_len * self.dsc_len)
+            .sum();
+        let mode_rem = (self.modes.len() - self.mode_idx - 1) * per_mode;
+        dsc_rem + frl_rem + dep_rem + enc_rem + mode_rem
+    }
+}
+
 impl<'a> Iterator for EnumeratorIter<'a> {
     type Item = CandidateConfig<'a>;
 
@@ -97,7 +118,14 @@ impl<'a> Iterator for EnumeratorIter<'a> {
         self.mode_idx += 1;
         Some(candidate)
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let n = self.remaining();
+        (n, Some(n))
+    }
 }
+
+impl ExactSizeIterator for EnumeratorIter<'_> {}
 
 /// Constructs an [`EnumeratorIter`] from a mode slice and capability triple.
 fn build_iter<'a>(
@@ -842,5 +870,42 @@ mod tests {
             CandidateEnumerator::enumerate(&slice_enumerator, &sink, &source, &cable).collect();
 
         assert_eq!(from_default, from_slice);
+    }
+
+    // --- size_hint / ExactSizeIterator ---
+
+    #[test]
+    fn size_hint_equals_collect_len() {
+        // Initial size_hint must match the total number of candidates produced.
+        let modes = [mode(60), mode(30)];
+        let sink = rgb8_sink();
+        let source = SourceCapabilities::default();
+        let cable = CableCapabilities::default();
+        let mut iter = build_iter(&modes, &sink, &source, &cable);
+        let (lo, hi) = iter.size_hint();
+        let collected: alloc::vec::Vec<_> = iter.by_ref().collect();
+        assert_eq!(lo, collected.len());
+        assert_eq!(hi, Some(collected.len()));
+    }
+
+    #[test]
+    fn size_hint_decrements_on_each_next() {
+        // size_hint must decrease by exactly 1 after each call to next().
+        let modes = [mode(60)];
+        let sink = rgb8_sink();
+        let source = SourceCapabilities::default();
+        let cable = CableCapabilities::default();
+        let mut iter = build_iter(&modes, &sink, &source, &cable);
+        let total = iter.len();
+        for consumed in 1..=total {
+            iter.next();
+            assert_eq!(
+                iter.len(),
+                total - consumed,
+                "wrong len after {consumed} calls"
+            );
+        }
+        assert_eq!(iter.len(), 0);
+        assert!(iter.next().is_none());
     }
 }
