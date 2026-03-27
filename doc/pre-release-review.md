@@ -43,7 +43,7 @@ and updated `TmdsClockCheck` to emit it. All affected tests updated.
 
 ---
 
-### C3 — YCbCr 4:2:0 capability is not per-mode
+### C3 — YCbCr 4:2:0 capability is not per-mode ✓ resolved
 
 **File:** `src/types/sink.rs:140-143`
 **Severity:** Medium

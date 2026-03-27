@@ -13,8 +13,15 @@ name = "concordance"
 version = "0.1.0"
 dependencies = [
  "bitflags",
- "display-types",
+ "display-types 0.2.2",
  "thiserror",
+]
+
+[[package]]
+name = "display-types"
+version = "0.2.2"
+dependencies = [
+ "bitflags",
 ]
 
 [[package]]
@@ -31,7 +38,7 @@ name = "negotiate"
 version = "0.0.0"
 dependencies = [
  "concordance",
- "display-types",
+ "display-types 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "piaf",
 ]
 
@@ -42,7 +49,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78f39db883dfdd24ba9a11968757c5d5543579b5c5179c3e71961c41fd84dfc4"
 dependencies = [
  "bitflags",
- "display-types",
+ "display-types 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
 ]
 
