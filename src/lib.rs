@@ -47,6 +47,8 @@ pub use builder::NegotiatorBuilder;
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub use output::config::NegotiatedConfig;
 #[cfg(any(feature = "alloc", feature = "std"))]
+pub use output::rejection::RejectedConfig;
+#[cfg(any(feature = "alloc", feature = "std"))]
 pub use output::trace::ReasoningTrace;
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub use types::{SinkBuildWarning, SupportedModes, sink_capabilities_from_display};

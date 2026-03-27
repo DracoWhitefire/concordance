@@ -48,16 +48,21 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for FrlCeilingCheck {
 
         let requested = frl_tier(config.frl_rate);
 
-        let sink_rate = sink.hdmi_forum.as_ref().map_or(HdmiForumFrl::NotSupported, |hf| {
-            if config.dsc_enabled {
-                // DSC transport has its own FRL ceiling declared separately from the
-                // non-DSC maximum. If the sink has no DSC section, DscCheck will reject
-                // the candidate; treat the ceiling as 0 here for a consistent safe result.
-                hf.dsc.as_ref().map_or(HdmiForumFrl::NotSupported, |d| d.max_frl_rate)
-            } else {
-                hf.max_frl_rate
-            }
-        });
+        let sink_rate = sink
+            .hdmi_forum
+            .as_ref()
+            .map_or(HdmiForumFrl::NotSupported, |hf| {
+                if config.dsc_enabled {
+                    // DSC transport has its own FRL ceiling declared separately from the
+                    // non-DSC maximum. If the sink has no DSC section, DscCheck will reject
+                    // the candidate; treat the ceiling as 0 here for a consistent safe result.
+                    hf.dsc
+                        .as_ref()
+                        .map_or(HdmiForumFrl::NotSupported, |d| d.max_frl_rate)
+                } else {
+                    hf.max_frl_rate
+                }
+            });
         let source_rate = source.max_frl_rate;
         let cable_rate = cable.max_frl_rate;
 

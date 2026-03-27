@@ -216,9 +216,9 @@ pixel clock ceiling is sourced exclusively from the EDID range limits descriptor
 
 ---
 
-### O2 — No rejection trace for non-accepted candidates
+### O2 — No rejection trace for non-accepted candidates ✓ resolved
 
-**File:** `src/builder.rs`, `src/output/`
+**File:** `src/builder.rs`, `src/output/rejection.rs`
 **Severity:** Medium
 
 `ReasoningTrace` is attached to `NegotiatedConfig` — accepted configs only. The pipeline
@@ -226,10 +226,12 @@ returns rejected candidates as a flat bag of `Violation`s with no per-candidate 
 A diagnostic tool that wants to show "why was 4K@120 HDR rejected?" must call
 `is_config_viable` again and correlate manually.
 
-**Action:** Add an opt-in rejection log to `NegotiatorBuilder` (behind `alloc`, e.g.
-`.with_rejection_log()`) that collects `(CandidateConfig, Vec<Violation>)` pairs. This doesn't
-need to be on by default — the allocation cost is non-trivial — but diagnostic consumers need
-it.
+**Resolution:** Added `RejectedConfig<V>` to `src/output/rejection.rs` — an owned mirror of
+`CandidateConfig` plus `violations: Vec<V>`. Added
+`NegotiatorBuilder::negotiate_with_log()` returning
+`(Vec<NegotiatedConfig<W>>, Vec<RejectedConfig<V>>)`. The existing `negotiate()` is
+unchanged and allocates no rejection log. Both methods share a private `negotiate_inner`
+so there is no logic duplication. `RejectedConfig` is re-exported from the crate root.
 
 ---
 
