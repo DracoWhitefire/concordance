@@ -8,6 +8,9 @@ use crate::enumerator::{CandidateEnumerator, DefaultEnumerator};
 use crate::output::config::NegotiatedConfig;
 use crate::output::rejection::RejectedConfig;
 use crate::output::trace::ReasoningTrace;
+
+/// Return type of [`NegotiatorBuilder::negotiate_with_log`].
+pub type NegotiationLog<W, V> = (Vec<NegotiatedConfig<W>>, Vec<RejectedConfig<V>>);
 use crate::ranker::policy::NegotiationPolicy;
 use crate::ranker::{ConfigRanker, DefaultRanker};
 use crate::types::{CableCapabilities, SinkCapabilities, SourceCapabilities};
@@ -145,10 +148,7 @@ where
         sink: &SinkCapabilities,
         source: &SourceCapabilities,
         cable: &CableCapabilities,
-    ) -> (
-        Vec<NegotiatedConfig<E::Warning>>,
-        Vec<RejectedConfig<E::Violation>>,
-    ) {
+    ) -> NegotiationLog<E::Warning, E::Violation> {
         self.negotiate_inner(sink, source, cable, true)
     }
 
@@ -158,10 +158,7 @@ where
         source: &SourceCapabilities,
         cable: &CableCapabilities,
         collect_rejections: bool,
-    ) -> (
-        Vec<NegotiatedConfig<E::Warning>>,
-        Vec<RejectedConfig<E::Violation>>,
-    ) {
+    ) -> NegotiationLog<E::Warning, E::Violation> {
         let mut accepted: Vec<NegotiatedConfig<E::Warning>> = Vec::new();
         let mut rejected: Vec<RejectedConfig<E::Violation>> = Vec::new();
 

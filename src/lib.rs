@@ -43,7 +43,7 @@ pub use probe::is_config_viable;
 pub use types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
 
 #[cfg(any(feature = "alloc", feature = "std"))]
-pub use builder::NegotiatorBuilder;
+pub use builder::{NegotiationLog, NegotiatorBuilder};
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub use output::config::NegotiatedConfig;
 #[cfg(any(feature = "alloc", feature = "std"))]
