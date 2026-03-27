@@ -37,10 +37,7 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for ColorEncodingCheck {
                     .ycbcr420_exclusive_modes
                     .as_slice()
                     .contains(config.mode);
-                let in_capable = sink
-                    .ycbcr420_capable_modes
-                    .as_slice()
-                    .contains(config.mode);
+                let in_capable = sink.ycbcr420_capable_modes.as_slice().contains(config.mode);
 
                 if in_exclusive || in_capable {
                     return None;
@@ -209,7 +206,10 @@ mod tests {
         let m = mode();
         let sink = exclusive_sink(m.clone());
         let result = check_encoding(&sink, ColorFormat::YCbCr420);
-        assert!(result.is_none(), "YCbCr 4:2:0 must be allowed on an exclusive mode");
+        assert!(
+            result.is_none(),
+            "YCbCr 4:2:0 must be allowed on an exclusive mode"
+        );
     }
 
     /// A mode in `ycbcr420_exclusive_modes` rejects any non-YCbCr 4:2:0 encoding.
@@ -234,7 +234,10 @@ mod tests {
         let m = mode();
         let sink = capable_sink(m.clone());
         let result = check_encoding(&sink, ColorFormat::YCbCr420);
-        assert!(result.is_none(), "YCbCr 4:2:0 must be allowed on a capable mode");
+        assert!(
+            result.is_none(),
+            "YCbCr 4:2:0 must be allowed on a capable mode"
+        );
     }
 
     /// A mode in `ycbcr420_capable_modes` still accepts other declared encodings.

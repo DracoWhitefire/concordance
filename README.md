@@ -28,13 +28,13 @@ use display_types::{ColorBitDepth, ColorFormat, VideoMode};
 use display_types::cea861::HdmiForumFrl;
 
 let mode = VideoMode::new(3840, 2160, 60, false);
-let config = CandidateConfig {
-    mode: &mode,
-    color_encoding: ColorFormat::Rgb444,
-    bit_depth: ColorBitDepth::Depth8,
-    frl_rate: HdmiForumFrl::NotSupported,
-    dsc_enabled: false,
-};
+let config = CandidateConfig::new(
+    &mode,
+    ColorFormat::Rgb444,
+    ColorBitDepth::Depth8,
+    HdmiForumFrl::NotSupported,
+    false,
+);
 
 match is_config_viable(&sink, &source, &cable, &config) {
     Ok(_warnings) => println!("viable"),

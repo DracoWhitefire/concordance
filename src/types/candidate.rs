@@ -36,3 +36,22 @@ pub struct CandidateConfig<'a> {
     /// Whether Display Stream Compression is applied.
     pub dsc_enabled: bool,
 }
+
+impl<'a> CandidateConfig<'a> {
+    /// Constructs a `CandidateConfig`.
+    pub fn new(
+        mode: &'a VideoMode,
+        color_encoding: ColorFormat,
+        bit_depth: ColorBitDepth,
+        frl_rate: HdmiForumFrl,
+        dsc_enabled: bool,
+    ) -> Self {
+        Self {
+            mode,
+            color_encoding,
+            bit_depth,
+            frl_rate,
+            dsc_enabled,
+        }
+    }
+}

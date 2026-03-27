@@ -150,7 +150,7 @@ dsc, quirks)`) or a builder, so the construction path is obvious and compile-err
 
 ---
 
-### E2 — `CandidateConfig` construction in the README example
+### E2 — `CandidateConfig` construction in the README example ✓ resolved
 
 **File:** `README.md:31-37`
 **Severity:** Medium
