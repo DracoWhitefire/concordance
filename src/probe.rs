@@ -35,7 +35,7 @@ mod tests {
     use display_types::cea861::HdmiForumFrl;
     use display_types::{ColorBitDepth, ColorBitDepths, ColorCapabilities, ColorFormat, VideoMode};
 
-    fn mode(refresh_rate: u8) -> VideoMode {
+    fn mode(refresh_rate: u16) -> VideoMode {
         VideoMode::new(1920, 1080, refresh_rate, false)
     }
 

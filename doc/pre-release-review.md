@@ -120,7 +120,7 @@ The no-alloc path is untouched — is_config_viable callers supply their own Can
 
 ---
 
-### C4 — `refresh_rate: u8` caps at 255 Hz
+### C4 — `refresh_rate: u8` caps at 255 Hz ✓ resolved
 
 **File:** `display-types` (upstream), referenced in `src/engine/checks/timing.rs:24`
 **Severity:** Low (today), rising

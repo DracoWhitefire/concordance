@@ -21,7 +21,7 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for RefreshRateCheck {
     ) -> Option<V> {
         let min_hz = sink.min_v_rate?;
         let max_hz = sink.max_v_rate?;
-        let rate_hz = config.mode.refresh_rate as u16;
+        let rate_hz = config.mode.refresh_rate;
         if rate_hz < min_hz || rate_hz > max_hz {
             Some(
                 Violation::RefreshRateOutOfRange {
@@ -169,7 +169,7 @@ mod tests {
     use display_types::cea861::{HdmiForumFrl, HdmiForumSinkCap, HdmiVsdb, HdmiVsdbFlags};
     use display_types::{ColorBitDepth, ColorFormat, VideoMode};
 
-    fn mode(refresh_rate: u8) -> VideoMode {
+    fn mode(refresh_rate: u16) -> VideoMode {
         VideoMode::new(1920, 1080, refresh_rate, false)
     }
 

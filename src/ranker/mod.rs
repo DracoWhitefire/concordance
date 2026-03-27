@@ -257,7 +257,7 @@ mod tests {
     fn config(
         width: u16,
         height: u16,
-        refresh_rate: u8,
+        refresh_rate: u16,
         interlaced: bool,
         color_encoding: ColorFormat,
         bit_depth: ColorBitDepth,
