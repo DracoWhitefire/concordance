@@ -68,10 +68,12 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for PixelClockCheck {
         let pixel_clock_khz = pixel_clock_khz(config.mode);
         let required_mhz = pixel_clock_khz / 1000;
         if required_mhz > limit_mhz {
+            use crate::output::warning::LimitSource;
             Some(
                 Violation::PixelClockExceeded {
                     required_mhz,
                     limit_mhz,
+                    limit_source: LimitSource::Sink,
                 }
                 .into(),
             )
@@ -156,10 +158,21 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for TmdsClockCheck {
         if limit_khz == u32::MAX || tmds_khz <= limit_khz {
             None
         } else {
+            use crate::output::warning::LimitSource;
+            // Cable takes priority over source over sink when multiple parties share
+            // the binding limit — cable replacement is the most actionable fix.
+            let limit_source = if cable_limit == limit_khz {
+                LimitSource::Cable
+            } else if source_limit == limit_khz {
+                LimitSource::Source
+            } else {
+                LimitSource::Sink
+            };
             Some(
                 Violation::TmdsClockExceeded {
                     required_mhz: tmds_khz / 1000,
                     limit_mhz: limit_khz / 1000,
+                    limit_source,
                 }
                 .into(),
             )
@@ -659,6 +672,80 @@ mod tests {
                 HdmiForumFrl::NotSupported,
             ),
             Some(Violation::TmdsClockExceeded { limit_mhz: 100, .. })
+        ));
+    }
+
+    // --- TmdsClockCheck: LimitSource field tests ---
+
+    #[test]
+    fn tmds_limit_source_is_sink_when_sink_is_binding() {
+        use crate::output::warning::LimitSource;
+        // Sink limited to 100 MHz; source unconstrained; cable unconstrained.
+        let sink = sink_with_tmds_limit(100);
+        let m = mode(60);
+        assert!(matches!(
+            tmds_check(
+                &sink,
+                &SourceCapabilities::default(),
+                &CableCapabilities::default(),
+                &m,
+                ColorFormat::Rgb444,
+                ColorBitDepth::Depth8,
+                HdmiForumFrl::NotSupported,
+            ),
+            Some(Violation::TmdsClockExceeded {
+                limit_source: LimitSource::Sink,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn tmds_limit_source_is_source_when_source_is_binding() {
+        use crate::output::warning::LimitSource;
+        // Source limited to 100_000 kHz; sink unconstrained; cable unconstrained.
+        let source = source_with_tmds_limit(100_000);
+        let m = mode(60);
+        assert!(matches!(
+            tmds_check(
+                &SinkCapabilities::default(),
+                &source,
+                &CableCapabilities::default(),
+                &m,
+                ColorFormat::Rgb444,
+                ColorBitDepth::Depth8,
+                HdmiForumFrl::NotSupported,
+            ),
+            Some(Violation::TmdsClockExceeded {
+                limit_source: LimitSource::Source,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn tmds_limit_source_is_cable_when_cable_is_binding() {
+        use crate::output::warning::LimitSource;
+        // Cable limited to 100_000 kHz; sink and source both unconstrained.
+        let cable = CableCapabilities {
+            max_tmds_clock: 100_000,
+            ..CableCapabilities::unconstrained()
+        };
+        let m = mode(60);
+        assert!(matches!(
+            tmds_check(
+                &SinkCapabilities::default(),
+                &SourceCapabilities::default(),
+                &cable,
+                &m,
+                ColorFormat::Rgb444,
+                ColorBitDepth::Depth8,
+                HdmiForumFrl::NotSupported,
+            ),
+            Some(Violation::TmdsClockExceeded {
+                limit_source: LimitSource::Cable,
+                ..
+            })
         ));
     }
 

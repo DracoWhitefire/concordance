@@ -195,9 +195,9 @@ bandwidth within native res only") but it's not explained and reads as an oversi
 
 ## Observability gaps
 
-### O1 — Violations don't identify which party imposed the constraint
+### O1 — Violations don't identify which party imposed the constraint ✓ resolved
 
-**File:** `src/output/warning.rs`, `src/engine/checks/timing.rs`
+**File:** `src/output/warning.rs`, `src/engine/checks/timing.rs`, `src/engine/checks/frl.rs`
 **Severity:** Medium
 
 `PixelClockExceeded` gives `required_mhz` and `limit_mhz` but not whether the binding
@@ -205,9 +205,14 @@ ceiling came from the sink, source, or cable. `FrlRateExceeded` carries no conte
 A compositor or diagnostic tool cannot reconstruct "this mode was rejected because the cable's
 TMDS ceiling is too low" from the current output.
 
-**Action:** Add a `source` field to bandwidth-related violations identifying which party
-imposed the limit (`Sink`, `Source`, `Cable`, or `Tightest` for the combined minimum). This
-is especially useful for cable-related rejections where the fix is "use a better cable."
+**Resolution:** Added `pub enum LimitSource { Sink, Source, Cable }` (with `Display`) to
+`warning.rs` and re-exported from the crate root. Added `limit_source: LimitSource` to
+`PixelClockExceeded` and `TmdsClockExceeded`. Expanded `FrlRateExceeded` from a unit variant
+to a struct with `requested: HdmiForumFrl`, `limit: HdmiForumFrl`, and
+`limit_source: LimitSource`. When multiple parties share the binding tier or clock value,
+`Cable` takes priority over `Source` over `Sink` — cable replacement is the most actionable
+fix for the end user. `PixelClockExceeded` always reports `LimitSource::Sink` because the
+pixel clock ceiling is sourced exclusively from the EDID range limits descriptor.
 
 ---
 

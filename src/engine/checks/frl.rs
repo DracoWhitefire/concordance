@@ -48,23 +48,44 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for FrlCeilingCheck {
 
         let requested = frl_tier(config.frl_rate);
 
-        let sink_max = sink.hdmi_forum.as_ref().map_or(0, |hf| {
+        let sink_rate = sink.hdmi_forum.as_ref().map_or(HdmiForumFrl::NotSupported, |hf| {
             if config.dsc_enabled {
                 // DSC transport has its own FRL ceiling declared separately from the
                 // non-DSC maximum. If the sink has no DSC section, DscCheck will reject
                 // the candidate; treat the ceiling as 0 here for a consistent safe result.
-                hf.dsc.as_ref().map_or(0, |d| frl_tier(d.max_frl_rate))
+                hf.dsc.as_ref().map_or(HdmiForumFrl::NotSupported, |d| d.max_frl_rate)
             } else {
-                frl_tier(hf.max_frl_rate)
+                hf.max_frl_rate
             }
         });
-        let source_max = frl_tier(source.max_frl_rate);
-        let cable_max = frl_tier(cable.max_frl_rate);
+        let source_rate = source.max_frl_rate;
+        let cable_rate = cable.max_frl_rate;
+
+        let sink_max = frl_tier(sink_rate);
+        let source_max = frl_tier(source_rate);
+        let cable_max = frl_tier(cable_rate);
 
         let effective_max = sink_max.min(source_max).min(cable_max);
 
         if requested > effective_max {
-            Some(Violation::FrlRateExceeded.into())
+            use crate::output::warning::LimitSource;
+            // Cable takes priority over source over sink when multiple parties share
+            // the binding limit — cable replacement is the most actionable fix.
+            let (limit, limit_source) = if cable_max == effective_max {
+                (cable_rate, LimitSource::Cable)
+            } else if source_max == effective_max {
+                (source_rate, LimitSource::Source)
+            } else {
+                (sink_rate, LimitSource::Sink)
+            };
+            Some(
+                Violation::FrlRateExceeded {
+                    requested: config.frl_rate,
+                    limit,
+                    limit_source,
+                }
+                .into(),
+            )
         } else {
             None
         }
@@ -262,7 +283,7 @@ mod tests {
                 &CableCapabilities::unconstrained(),
                 HdmiForumFrl::Rate8Gbps4Lanes
             ),
-            Some(Violation::FrlRateExceeded)
+            Some(Violation::FrlRateExceeded { .. })
         ));
     }
 
@@ -277,7 +298,7 @@ mod tests {
                 &CableCapabilities::unconstrained(),
                 HdmiForumFrl::Rate8Gbps4Lanes
             ),
-            Some(Violation::FrlRateExceeded)
+            Some(Violation::FrlRateExceeded { .. })
         ));
     }
 
@@ -288,7 +309,7 @@ mod tests {
         let cable = cable_with_frl(HdmiForumFrl::Rate6Gbps4Lanes);
         assert!(matches!(
             check(&sink, &source, &cable, HdmiForumFrl::Rate10Gbps4Lanes),
-            Some(Violation::FrlRateExceeded)
+            Some(Violation::FrlRateExceeded { .. })
         ));
     }
 
@@ -304,7 +325,7 @@ mod tests {
                 &CableCapabilities::unconstrained(),
                 HdmiForumFrl::Rate3Gbps3Lanes
             ),
-            Some(Violation::FrlRateExceeded)
+            Some(Violation::FrlRateExceeded { .. })
         ));
     }
 
@@ -317,7 +338,7 @@ mod tests {
         let cable = cable_with_frl(HdmiForumFrl::Rate6Gbps4Lanes);
         assert!(matches!(
             check(&sink, &source, &cable, HdmiForumFrl::Rate8Gbps4Lanes),
-            Some(Violation::FrlRateExceeded)
+            Some(Violation::FrlRateExceeded { .. })
         ));
         // But 6G 4-lane itself is fine.
         assert!(check(&sink, &source, &cable, HdmiForumFrl::Rate6Gbps4Lanes).is_none());
@@ -351,7 +372,7 @@ mod tests {
                 HdmiForumFrl::Rate8Gbps4Lanes,
                 true
             ),
-            Some(Violation::FrlRateExceeded)
+            Some(Violation::FrlRateExceeded { .. })
         ));
     }
 
@@ -375,6 +396,84 @@ mod tests {
         );
     }
 
+    // --- LimitSource field tests ---
+
+    #[test]
+    fn limit_source_is_sink_when_sink_is_binding() {
+        use crate::output::warning::LimitSource;
+        let sink = sink_with_frl(HdmiForumFrl::Rate6Gbps3Lanes); // tier 2
+        let source = source_with_frl(HdmiForumFrl::Rate12Gbps4Lanes); // tier 6
+        let result = check(
+            &sink,
+            &source,
+            &CableCapabilities::unconstrained(),
+            HdmiForumFrl::Rate8Gbps4Lanes,
+        );
+        assert!(matches!(
+            result,
+            Some(Violation::FrlRateExceeded {
+                limit_source: LimitSource::Sink,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn limit_source_is_source_when_source_is_binding() {
+        use crate::output::warning::LimitSource;
+        let sink = sink_with_frl(HdmiForumFrl::Rate12Gbps4Lanes);
+        let source = source_with_frl(HdmiForumFrl::Rate6Gbps3Lanes); // tier 2, tighter
+        let result = check(
+            &sink,
+            &source,
+            &CableCapabilities::unconstrained(),
+            HdmiForumFrl::Rate8Gbps4Lanes,
+        );
+        assert!(matches!(
+            result,
+            Some(Violation::FrlRateExceeded {
+                limit_source: LimitSource::Source,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn limit_source_is_cable_when_cable_is_binding() {
+        use crate::output::warning::LimitSource;
+        let sink = sink_with_frl(HdmiForumFrl::Rate12Gbps4Lanes);
+        let source = source_with_frl(HdmiForumFrl::Rate12Gbps4Lanes);
+        let cable = cable_with_frl(HdmiForumFrl::Rate6Gbps3Lanes); // tier 2, tightest
+        let result = check(&sink, &source, &cable, HdmiForumFrl::Rate8Gbps4Lanes);
+        assert!(matches!(
+            result,
+            Some(Violation::FrlRateExceeded {
+                limit_source: LimitSource::Cable,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn frl_rate_exceeded_carries_correct_rates() {
+        let sink = sink_with_frl(HdmiForumFrl::Rate6Gbps3Lanes);
+        let source = source_with_frl(HdmiForumFrl::Rate12Gbps4Lanes);
+        let result = check(
+            &sink,
+            &source,
+            &CableCapabilities::unconstrained(),
+            HdmiForumFrl::Rate8Gbps4Lanes,
+        );
+        assert!(matches!(
+            result,
+            Some(Violation::FrlRateExceeded {
+                requested: HdmiForumFrl::Rate8Gbps4Lanes,
+                limit: HdmiForumFrl::Rate6Gbps3Lanes,
+                ..
+            })
+        ));
+    }
+
     #[test]
     fn dsc_enabled_no_dsc_section_rejected() {
         // Sink has FRL support but no DSC section — DSC FRL ceiling is 0.
@@ -388,7 +487,7 @@ mod tests {
                 HdmiForumFrl::Rate3Gbps3Lanes,
                 true
             ),
-            Some(Violation::FrlRateExceeded)
+            Some(Violation::FrlRateExceeded { .. })
         ));
     }
 }
