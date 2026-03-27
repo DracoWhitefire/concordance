@@ -3,14 +3,26 @@
 use display_types::cea861::HdmiForumFrl;
 
 bitflags::bitflags! {
-    /// Vendor-specific quirk flags for the source.
+    /// Source quirk flags that relax specific constraint checks.
     ///
-    /// Used to override or relax constraint checks where real hardware diverges
-    /// from the specification.
+    /// Flags are defined by concordance and correspond to known cases where a
+    /// source or its driver diverges from the HDMI specification in a predictable
+    /// way. Pass `QuirkFlags::empty()` (the default) when no quirks apply.
+    ///
+    /// Callers cannot define their own bits; use
+    /// [`NegotiatorBuilder::with_extra_rule`][crate::NegotiatorBuilder::with_extra_rule]
+    /// to express constraints that fall outside the built-in rule set.
     #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
     pub struct QuirkFlags: u32 {
-        // Reserved for platform-specific flags.
+        /// Ignore the sink's declared vertical refresh rate range.
+        ///
+        /// Some TVs and variable-rate panels declare a narrow `min_v_rate`/`max_v_rate`
+        /// window in their EDID range limits descriptor that does not reflect their true
+        /// operating range. Setting this flag suppresses
+        /// [`Violation::RefreshRateOutOfRange`][crate::output::warning::Violation::RefreshRateOutOfRange]
+        /// so that modes outside the declared range are still considered.
+        const IGNORE_REFRESH_RATE_RANGE = 1 << 0;
     }
 }
 

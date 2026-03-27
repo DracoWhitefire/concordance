@@ -165,7 +165,7 @@ explicitly and ensure future fields have defaults.
 
 ---
 
-### E3 — `QuirkFlags` is defined but empty
+### E3 — `QuirkFlags` is defined but empty ✓ resolved
 
 **File:** `src/types/source.rs:12-15`
 **Severity:** Low

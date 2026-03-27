@@ -15,10 +15,17 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for RefreshRateCheck {
     fn check(
         &self,
         sink: &SinkCapabilities,
-        _source: &SourceCapabilities,
+        source: &SourceCapabilities,
         _cable: &CableCapabilities,
         config: &CandidateConfig<'_>,
     ) -> Option<V> {
+        use crate::types::source::QuirkFlags;
+        if source
+            .quirks
+            .contains(QuirkFlags::IGNORE_REFRESH_RATE_RANGE)
+        {
+            return None;
+        }
         let min_hz = sink.min_v_rate?;
         let max_hz = sink.max_v_rate?;
         let rate_hz = config.mode.refresh_rate;
@@ -331,6 +338,32 @@ mod tests {
     #[test]
     fn no_bounds_skips_check() {
         assert!(check(&SinkCapabilities::default(), &mode(240)).is_none());
+    }
+
+    #[test]
+    fn ignore_refresh_rate_range_quirk_bypasses_check() {
+        use crate::types::source::QuirkFlags;
+        let sink = SinkCapabilities {
+            min_v_rate: Some(24),
+            max_v_rate: Some(60),
+            ..Default::default()
+        };
+        let source = SourceCapabilities {
+            quirks: QuirkFlags::IGNORE_REFRESH_RATE_RANGE,
+            ..Default::default()
+        };
+        // 144 Hz would normally be rejected (above declared max of 60 Hz).
+        let result = ConstraintRule::<Violation>::check(
+            &RefreshRateCheck,
+            &sink,
+            &source,
+            &CableCapabilities::default(),
+            &config(&mode(144)),
+        );
+        assert!(
+            result.is_none(),
+            "IGNORE_REFRESH_RATE_RANGE must suppress the range check"
+        );
     }
 
     #[test]
