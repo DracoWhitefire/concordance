@@ -299,7 +299,7 @@ resolution". The `dsc_required` field in `NegotiatedConfig` retains its current 
 
 ## Audience-specific gaps
 
-### A1 — No path from raw timing registers to `VideoMode` (firmware/embedded) ✓ partially resolved
+### A1 — No path from raw timing registers to `VideoMode` (firmware/embedded) ✓ resolved
 
 **File:** `README.md`, `doc/architecture.md`
 **Severity:** Low
@@ -314,10 +314,10 @@ type in `display-types` may not have a public constructor for this.
 - **Standard CTA modes** — `display_types::cea861::vic_to_mode(vic)` returns a `VideoMode`
   with the exact pixel clock from the CEA-861 timing table. README example updated to show
   this path. No API changes required.
-- **Custom / non-CTA timings** — `VideoMode::new(width, height, refresh_hz, interlace)` with
-  the caveat that pixel clock is CVT-RB estimated (may under-estimate ~10–15% for HDMI Forum
-  CTA modes). A `VideoMode::from_pixel_clock` constructor for exact-clock custom timings is
-  planned as an upstream `display-types` feature and tracked in `doc/roadmap.md`.
+- **Custom / non-CTA timings** — `VideoMode::new(width, height, refresh_hz, interlace).with_pixel_clock(khz)`
+  stores the exact clock (added to `display-types`). Without `.with_pixel_clock`, falls back
+  to CVT-RB estimation (~10–15% under-estimate for HDMI Forum CTA modes). Both paths documented
+  in `doc/architecture.md`.
 
 ---
 

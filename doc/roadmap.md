@@ -38,14 +38,6 @@ and pipeline invariants under adversarial input.
 Additional built-in `ConstraintRule` implementations covering edge cases currently left to
 callers: VRR range validation, Deep Color bandwidth margins, ALLM and QMS interaction checks.
 
-### `VideoMode::from_pixel_clock` for custom firmware timings (A1)
-
-Firmware driving non-CTA modes constructs `VideoMode` via `VideoMode::new(w, h, refresh, interlace)`,
-which derives the pixel clock via CVT-RB estimation. An exact-clock constructor in `display-types`
-would let callers supply the pixel clock directly from their PLL or hardware register, making
-bandwidth ceiling checks precise for non-standard modes. This is an upstream `display-types`
-change; standard CTA modes already use `vic_to_mode` and are unaffected.
-
 ### VRR constraint implementation (I1)
 
 `NegotiatedConfig.vrr_applicable` is always `false` today. Completing this requires

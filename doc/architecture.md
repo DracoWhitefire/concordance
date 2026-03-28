@@ -196,12 +196,20 @@ let mode = vic_to_mode(97).expect("VIC 97 is in the table");
 VIC numbers for common modes: 16 = 1080p@60, 31 = 1080p@50, 93 = 4K@24, 97 = 4K@60,
 107 = 4K@120 (via FRL). The full table is in `display-types/src/cea861/vic_table.rs`.
 
-**Non-CTA / custom timings** — use `VideoMode::new(width, height, refresh_hz, interlace)`.
-The pixel clock is then derived via CVT-RB estimation, which under-estimates for HDMI Forum
-CTA modes by roughly 10–15%. This is acceptable for custom timings where the estimate is
-the best available value, but callers should be aware that a mode close to a bandwidth ceiling
-may produce a false accept. A `VideoMode::from_pixel_clock` constructor that stores the exact
-clock is planned for a future `display-types` release.
+**Non-CTA / custom timings** — use `VideoMode::new` followed by `.with_pixel_clock` if the
+exact clock is known:
+
+```rust
+use display_types::VideoMode;
+
+// Custom panel: supply the exact pixel clock from the PLL or hardware register.
+let mode = VideoMode::new(1920, 1200, 60, false).with_pixel_clock(154_000);
+```
+
+Without `.with_pixel_clock`, the pixel clock is derived via CVT-RB estimation, which
+under-estimates for HDMI Forum CTA modes by roughly 10–15% and can produce false accepts in
+bandwidth ceiling checks. For custom timings where the exact clock is unavailable, the estimate
+is the best option — just note the caveat for modes near a bandwidth ceiling.
 
 #### Rule injection
 
