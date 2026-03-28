@@ -36,3 +36,48 @@ pub struct CandidateConfig<'a> {
     /// Whether Display Stream Compression is applied.
     pub dsc_enabled: bool,
 }
+
+impl<'a> CandidateConfig<'a> {
+    /// Constructs a `CandidateConfig`.
+    pub fn new(
+        mode: &'a VideoMode,
+        color_encoding: ColorFormat,
+        bit_depth: ColorBitDepth,
+        frl_rate: HdmiForumFrl,
+        dsc_enabled: bool,
+    ) -> Self {
+        Self {
+            mode,
+            color_encoding,
+            bit_depth,
+            frl_rate,
+            dsc_enabled,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use display_types::VideoMode;
+
+    #[test]
+    fn new_matches_struct_literal() {
+        let mode = VideoMode::new(1920, 1080, 60, false);
+        let via_new = CandidateConfig::new(
+            &mode,
+            ColorFormat::Rgb444,
+            ColorBitDepth::Depth8,
+            HdmiForumFrl::NotSupported,
+            false,
+        );
+        let via_literal = CandidateConfig {
+            mode: &mode,
+            color_encoding: ColorFormat::Rgb444,
+            bit_depth: ColorBitDepth::Depth8,
+            frl_rate: HdmiForumFrl::NotSupported,
+            dsc_enabled: false,
+        };
+        assert_eq!(via_new, via_literal);
+    }
+}

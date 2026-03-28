@@ -18,6 +18,44 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for ColorEncodingCheck {
         _cable: &CableCapabilities,
         config: &CandidateConfig<'_>,
     ) -> Option<V> {
+        #[cfg(any(feature = "alloc", feature = "std"))]
+        {
+            use display_types::ColorFormat;
+            // Reject non-YCbCr 4:2:0 encodings on exclusive-4:2:0 modes (Y420 VDB).
+            if config.color_encoding != ColorFormat::YCbCr420
+                && sink
+                    .ycbcr420_exclusive_modes
+                    .as_slice()
+                    .contains(config.mode)
+            {
+                return Some(Violation::EncodingRestrictedToYCbCr420.into());
+            }
+
+            // Per-mode YCbCr 4:2:0 eligibility (Y420 VDB + CMB).
+            if config.color_encoding == ColorFormat::YCbCr420 {
+                let in_exclusive = sink
+                    .ycbcr420_exclusive_modes
+                    .as_slice()
+                    .contains(config.mode);
+                let in_capable = sink.ycbcr420_capable_modes.as_slice().contains(config.mode);
+
+                if in_exclusive || in_capable {
+                    return None;
+                }
+
+                // Per-mode lists are populated but mode is absent — reject.
+                // If both lists are empty, fall through to the display-level check below.
+                let lists_populated = !sink.ycbcr420_exclusive_modes.as_slice().is_empty()
+                    || !sink.ycbcr420_capable_modes.as_slice().is_empty();
+                if lists_populated {
+                    return Some(Violation::ColorEncodingUnsupported.into());
+                }
+            }
+        }
+
+        // Display-level check: covers non-YCbCr420 formats, the no-alloc path,
+        // and the fallback for manually-constructed SinkCapabilities with empty
+        // per-mode lists.
         if sink
             .color_capabilities
             .for_format(config.color_encoding)
@@ -134,6 +172,130 @@ mod tests {
             color_capabilities: caps,
             ..Default::default()
         }
+    }
+
+    // --- ColorEncodingCheck: per-mode YCbCr 4:2:0 (alloc path) ---
+
+    #[cfg(any(feature = "alloc", feature = "std"))]
+    fn exclusive_sink(exclusive_mode: VideoMode) -> SinkCapabilities {
+        use crate::types::SupportedModes;
+        let (modes, _) = SupportedModes::from_vec(alloc::vec![exclusive_mode]);
+        SinkCapabilities {
+            ycbcr420_exclusive_modes: modes,
+            ..Default::default()
+        }
+    }
+
+    #[cfg(any(feature = "alloc", feature = "std"))]
+    fn capable_sink(capable_mode: VideoMode) -> SinkCapabilities {
+        use crate::types::SupportedModes;
+        let mut caps = ColorCapabilities::default();
+        caps.rgb444 = ColorBitDepths::BPC_8;
+        let (modes, _) = SupportedModes::from_vec(alloc::vec![capable_mode]);
+        SinkCapabilities {
+            color_capabilities: caps,
+            ycbcr420_capable_modes: modes,
+            ..Default::default()
+        }
+    }
+
+    /// A mode in `ycbcr420_exclusive_modes` accepts YCbCr 4:2:0.
+    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[test]
+    fn exclusive_mode_allows_ycbcr420() {
+        let m = mode();
+        let sink = exclusive_sink(m.clone());
+        let result = check_encoding(&sink, ColorFormat::YCbCr420);
+        assert!(
+            result.is_none(),
+            "YCbCr 4:2:0 must be allowed on an exclusive mode"
+        );
+    }
+
+    /// A mode in `ycbcr420_exclusive_modes` rejects any non-YCbCr 4:2:0 encoding.
+    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[test]
+    fn exclusive_mode_rejects_rgb() {
+        let m = mode();
+        let sink = exclusive_sink(m.clone());
+        assert!(
+            matches!(
+                check_encoding(&sink, ColorFormat::Rgb444),
+                Some(Violation::EncodingRestrictedToYCbCr420)
+            ),
+            "RGB must be rejected on an exclusive-4:2:0 mode"
+        );
+    }
+
+    /// A mode in `ycbcr420_capable_modes` accepts YCbCr 4:2:0.
+    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[test]
+    fn capable_mode_allows_ycbcr420() {
+        let m = mode();
+        let sink = capable_sink(m.clone());
+        let result = check_encoding(&sink, ColorFormat::YCbCr420);
+        assert!(
+            result.is_none(),
+            "YCbCr 4:2:0 must be allowed on a capable mode"
+        );
+    }
+
+    /// A mode in `ycbcr420_capable_modes` still accepts other declared encodings.
+    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[test]
+    fn capable_mode_also_allows_rgb() {
+        let m = mode();
+        let sink = capable_sink(m.clone());
+        assert!(
+            check_encoding(&sink, ColorFormat::Rgb444).is_none(),
+            "RGB must still be allowed on a capable mode"
+        );
+    }
+
+    /// When per-mode lists are populated but the candidate mode is absent,
+    /// YCbCr 4:2:0 is rejected even if `color_capabilities.ycbcr420` is set.
+    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[test]
+    fn ycbcr420_rejected_when_mode_absent_from_populated_lists() {
+        use crate::types::SupportedModes;
+        let listed_mode = VideoMode::new(3840, 2160, 60, false);
+        let other_mode = VideoMode::new(1920, 1080, 60, false);
+        let mut caps = ColorCapabilities::default();
+        caps.ycbcr420 = ColorBitDepths::BPC_8; // display-level claim
+        let (modes, _) = SupportedModes::from_vec(alloc::vec![listed_mode]);
+        let sink = SinkCapabilities {
+            color_capabilities: caps,
+            ycbcr420_exclusive_modes: modes,
+            ..Default::default()
+        };
+        let result = ConstraintRule::<Violation>::check(
+            &ColorEncodingCheck,
+            &sink,
+            &SourceCapabilities::default(),
+            &CableCapabilities::default(),
+            &config(&other_mode, ColorFormat::YCbCr420, ColorBitDepth::Depth8),
+        );
+        assert!(
+            matches!(result, Some(Violation::ColorEncodingUnsupported)),
+            "YCbCr 4:2:0 must be rejected when mode is not in the per-mode lists"
+        );
+    }
+
+    /// When both per-mode lists are empty, falls back to `color_capabilities.ycbcr420`.
+    #[cfg(any(feature = "alloc", feature = "std"))]
+    #[test]
+    fn ycbcr420_fallback_to_display_level_caps() {
+        let mut caps = ColorCapabilities::default();
+        caps.ycbcr420 = ColorBitDepths::BPC_8;
+        let sink = SinkCapabilities {
+            color_capabilities: caps,
+            ..Default::default()
+        };
+        let result = check_encoding(&sink, ColorFormat::YCbCr420);
+        assert!(
+            result.is_none(),
+            "YCbCr 4:2:0 must be allowed via display-level fallback when per-mode lists are empty"
+        );
     }
 
     // --- ColorEncodingCheck ---

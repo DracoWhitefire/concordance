@@ -7,7 +7,7 @@ pub mod rule;
 use core::fmt;
 
 use crate::diagnostic::Diagnostic;
-use crate::output::warning::Violation;
+use crate::output::warning::{TaggedViolation, Violation};
 use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
 
 #[cfg(any(feature = "alloc", feature = "std"))]
@@ -186,7 +186,7 @@ mod tests {
 
 impl<V: Diagnostic> ConstraintEngine for DefaultConstraintEngine<V> {
     type Warning = crate::output::warning::Warning;
-    type Violation = V;
+    type Violation = TaggedViolation<V>;
 
     fn check(
         &self,
@@ -199,8 +199,11 @@ impl<V: Diagnostic> ConstraintEngine for DefaultConstraintEngine<V> {
         {
             let mut violations = Vec::new();
             for rule in self.checks {
-                if let Some(v) = rule.check(sink, source, cable, config) {
-                    violations.push(v);
+                if let Some(violation) = rule.check(sink, source, cable, config) {
+                    violations.push(TaggedViolation {
+                        rule: rule.display_name(),
+                        violation,
+                    });
                 }
             }
             if violations.is_empty() {
@@ -212,8 +215,11 @@ impl<V: Diagnostic> ConstraintEngine for DefaultConstraintEngine<V> {
         #[cfg(not(any(feature = "alloc", feature = "std")))]
         {
             for rule in self.checks {
-                if let Some(v) = rule.check(sink, source, cable, config) {
-                    return Err(v);
+                if let Some(violation) = rule.check(sink, source, cable, config) {
+                    return Err(TaggedViolation {
+                        rule: rule.display_name(),
+                        violation,
+                    });
                 }
             }
             Ok(Default::default())

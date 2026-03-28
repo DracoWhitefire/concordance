@@ -2,6 +2,7 @@
 
 use crate::diagnostic::Diagnostic;
 use crate::engine::CheckResult;
+use crate::output::warning::TaggedViolation;
 use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
 
 #[cfg(any(feature = "alloc", feature = "std"))]
@@ -46,6 +47,39 @@ pub trait ConstraintRule<V: Diagnostic> {
         cable: &CableCapabilities,
         config: &CandidateConfig<'_>,
     ) -> Option<V>;
+}
+
+/// Wraps a [`ConstraintRule<V>`] so it produces a [`ConstraintRule<TaggedViolation<V>>`],
+/// tagging each emitted violation with the rule's [`display_name`][ConstraintRule::display_name].
+///
+/// [`NegotiatorBuilder::with_extra_rule`][crate::NegotiatorBuilder::with_extra_rule]
+/// applies this adapter automatically. Use it directly only if you are constructing
+/// a [`Layered`] engine by hand.
+pub struct TaggingAdapter<R>(pub R);
+
+impl<R, V> ConstraintRule<TaggedViolation<V>> for TaggingAdapter<R>
+where
+    R: ConstraintRule<V>,
+    V: Diagnostic,
+{
+    fn display_name(&self) -> &'static str {
+        self.0.display_name()
+    }
+
+    fn check(
+        &self,
+        sink: &SinkCapabilities,
+        source: &SourceCapabilities,
+        cable: &CableCapabilities,
+        config: &CandidateConfig<'_>,
+    ) -> Option<TaggedViolation<V>> {
+        self.0
+            .check(sink, source, cable, config)
+            .map(|violation| TaggedViolation {
+                rule: self.0.display_name(),
+                violation,
+            })
+    }
 }
 
 /// Chains two rules (or a base engine and an extra rule) in sequence.
@@ -235,6 +269,22 @@ mod tests {
         }
     }
 
+    // --- TaggingAdapter ---
+
+    #[test]
+    fn tagging_adapter_display_name_delegates_to_inner() {
+        let adapter = TaggingAdapter(AlwaysPass);
+        assert_eq!(
+            ConstraintRule::<TaggedViolation<Violation>>::display_name(&adapter),
+            "always_pass"
+        );
+        let adapter = TaggingAdapter(FailEncoding);
+        assert_eq!(
+            ConstraintRule::<TaggedViolation<Violation>>::display_name(&adapter),
+            "fail_encoding"
+        );
+    }
+
     // --- Layered<R1, R2> as ConstraintRule ---
 
     #[test]
@@ -281,7 +331,7 @@ mod tests {
     #[test]
     fn layered_engine_both_pass() {
         let m = mode();
-        let engine = Layered::new(empty_engine(), AlwaysPass);
+        let engine = Layered::new(empty_engine(), TaggingAdapter(AlwaysPass));
         assert!(
             engine
                 .check(&sink(), &source(), &cable(), &config(&m))
@@ -292,14 +342,14 @@ mod tests {
     #[test]
     fn layered_engine_base_passes_extra_fails() {
         let m = mode();
-        let engine = Layered::new(empty_engine(), FailDepth);
+        let engine = Layered::new(empty_engine(), TaggingAdapter(FailDepth));
         let violations = engine
             .check(&sink(), &source(), &cable(), &config(&m))
             .unwrap_err();
         assert!(
             violations
                 .iter()
-                .any(|v| matches!(v, Violation::BitDepthUnsupported))
+                .any(|v| matches!(v.violation, Violation::BitDepthUnsupported))
         );
     }
 
@@ -309,19 +359,22 @@ mod tests {
         // Base engine with ColorEncodingCheck; default sink → no color caps → fires.
         static BASE_RULES: &[&(dyn ConstraintRule<Violation> + Sync)] =
             &[&crate::engine::checks::ColorEncodingCheck];
-        let engine = Layered::new(DefaultConstraintEngine::with_checks(BASE_RULES), FailDepth);
+        let engine = Layered::new(
+            DefaultConstraintEngine::with_checks(BASE_RULES),
+            TaggingAdapter(FailDepth),
+        );
         let violations = engine
             .check(&sink(), &source(), &cable(), &config(&m))
             .unwrap_err();
         assert!(
             violations
                 .iter()
-                .any(|v| matches!(v, Violation::ColorEncodingUnsupported))
+                .any(|v| matches!(v.violation, Violation::ColorEncodingUnsupported))
         );
         assert!(
             violations
                 .iter()
-                .any(|v| matches!(v, Violation::BitDepthUnsupported))
+                .any(|v| matches!(v.violation, Violation::BitDepthUnsupported))
         );
     }
 
@@ -330,11 +383,17 @@ mod tests {
         let m = mode();
         static BASE_RULES: &[&(dyn ConstraintRule<Violation> + Sync)] =
             &[&crate::engine::checks::ColorEncodingCheck];
-        let engine = Layered::new(DefaultConstraintEngine::with_checks(BASE_RULES), AlwaysPass);
+        let engine = Layered::new(
+            DefaultConstraintEngine::with_checks(BASE_RULES),
+            TaggingAdapter(AlwaysPass),
+        );
         let violations = engine
             .check(&sink(), &source(), &cable(), &config(&m))
             .unwrap_err();
         assert_eq!(violations.len(), 1);
-        assert!(matches!(violations[0], Violation::ColorEncodingUnsupported));
+        assert!(matches!(
+            violations[0].violation,
+            Violation::ColorEncodingUnsupported
+        ));
     }
 }

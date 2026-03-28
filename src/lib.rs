@@ -1,3 +1,4 @@
+#![doc = include_str!("../doc/architecture.md")]
 //! HDMI 2.1 mode negotiation — policy layer of the display connection stack.
 //!
 //! Given sink, source, and cable capabilities (all caller-supplied), produce a ranked
@@ -36,16 +37,19 @@ pub mod enumerator;
 pub mod ranker;
 
 pub use diagnostic::Diagnostic;
+pub use engine::rule::TaggingAdapter;
 pub use engine::{CheckList, MAX_WARNINGS};
 pub use error::Error;
-pub use output::warning::{Violation, Warning};
+pub use output::warning::{LimitSource, TaggedViolation, Violation, Warning};
 pub use probe::is_config_viable;
 pub use types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
 
 #[cfg(any(feature = "alloc", feature = "std"))]
-pub use builder::NegotiatorBuilder;
+pub use builder::{NegotiationLog, NegotiatorBuilder};
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub use output::config::NegotiatedConfig;
+#[cfg(any(feature = "alloc", feature = "std"))]
+pub use output::rejection::RejectedConfig;
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub use output::trace::ReasoningTrace;
 #[cfg(any(feature = "alloc", feature = "std"))]

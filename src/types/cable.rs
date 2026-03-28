@@ -44,6 +44,15 @@ impl Default for CableCapabilities {
 }
 
 impl CableCapabilities {
+    /// Constructs a `CableCapabilities` with explicit values.
+    pub const fn new(hdmi_spec: HdmiSpec, max_frl_rate: HdmiForumFrl, max_tmds_clock: u32) -> Self {
+        Self {
+            hdmi_spec,
+            max_frl_rate,
+            max_tmds_clock,
+        }
+    }
+
     /// Returns a cable with no constraints — equivalent to assuming source and sink limits only.
     ///
     /// Useful for callers that have no cable information and wish to fall back to
@@ -54,5 +63,19 @@ impl CableCapabilities {
             max_frl_rate: HdmiForumFrl::Rate12Gbps4Lanes,
             max_tmds_clock: u32::MAX,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_sets_all_fields() {
+        let cable =
+            CableCapabilities::new(HdmiSpec::Hdmi21, HdmiForumFrl::Rate12Gbps4Lanes, 600_000);
+        assert_eq!(cable.hdmi_spec, HdmiSpec::Hdmi21);
+        assert_eq!(cable.max_frl_rate, HdmiForumFrl::Rate12Gbps4Lanes);
+        assert_eq!(cable.max_tmds_clock, 600_000);
     }
 }
