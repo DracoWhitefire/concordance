@@ -7,10 +7,11 @@
 //! # Feature flags
 //!
 //! - **`std`** *(default)* — enables `std`-dependent types; implies `alloc`.
-//! - **`alloc`** — enables the ranked iterator and `ReasoningTrace`.
+//! - **`alloc`** — enables the ranked iterator, `ReasoningTrace`, and `DefaultEnumerator`.
 //! - **`serde`** — derives `Serialize`/`Deserialize` for all public types.
 //!
-//! Without `alloc`, only [`is_config_viable`] is available.
+//! Without `alloc`, [`is_config_viable`], [`enumerator::CandidateEnumerator`], and
+//! [`SliceEnumerator`][enumerator::SliceEnumerator] are available.
 #![no_std]
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -30,7 +31,6 @@ pub mod types;
 
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub mod builder;
-#[cfg(any(feature = "alloc", feature = "std"))]
 pub mod enumerator;
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub mod ranker;
@@ -49,4 +49,4 @@ pub use output::config::NegotiatedConfig;
 #[cfg(any(feature = "alloc", feature = "std"))]
 pub use output::trace::ReasoningTrace;
 #[cfg(any(feature = "alloc", feature = "std"))]
-pub use types::sink_capabilities_from_display;
+pub use types::{SinkBuildWarning, SupportedModes, sink_capabilities_from_display};

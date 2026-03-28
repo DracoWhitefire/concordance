@@ -4,6 +4,21 @@
 ///
 /// `NegotiationPolicy` is a const-constructible struct. Named presets are provided
 /// for common cases; custom implementations can encode platform-specific priorities.
+///
+/// # Policy matrix
+///
+/// The two flags [`prefer_color_fidelity`] and [`prefer_high_refresh`] are independent
+/// and together select one of four ranking modes for the quality/performance dimension:
+///
+/// | `prefer_color_fidelity` | `prefer_high_refresh` | Ranking mode |
+/// |:-----------------------:|:---------------------:|--------------|
+/// | `true`                  | `false`               | **Color fidelity** — bit depth → color format → refresh rate (descending) |
+/// | `false`                 | `true`                | **High refresh** — refresh rate → bit depth → color format (descending) |
+/// | `true`                  | `true`                | **Color fidelity** — same as color-fidelity mode; fidelity takes precedence |
+/// | `false`                 | `false`               | **Power saving** — all three criteria reversed (ascending), minimising bandwidth |
+///
+/// [`prefer_color_fidelity`]: NegotiationPolicy::prefer_color_fidelity
+/// [`prefer_high_refresh`]: NegotiationPolicy::prefer_high_refresh
 #[non_exhaustive]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,6 +30,10 @@ pub struct NegotiationPolicy {
     pub prefer_color_fidelity: bool,
 
     /// Prefer higher refresh rate over other factors after color fidelity.
+    ///
+    /// When both `prefer_color_fidelity` and `prefer_high_refresh` are `true`, color
+    /// fidelity takes precedence. When both are `false`, the ranker enters power-saving
+    /// mode and reverses all three criteria to minimise bandwidth.
     pub prefer_high_refresh: bool,
 
     /// Penalize configurations that require DSC.
