@@ -33,6 +33,50 @@ impl core::fmt::Display for LimitSource {
     }
 }
 
+/// A violation paired with the name of the rule that produced it.
+///
+/// [`DefaultConstraintEngine`][crate::engine::DefaultConstraintEngine] wraps every
+/// violation in a `TaggedViolation` at collection time, so callers can tell which
+/// rule rejected a candidate without knowing the violation-to-rule mapping by convention.
+///
+/// Access the rule name via the `rule` field and the violation via `violation`.
+///
+/// **Serde round-trip note:** the `rule` field serializes to its string value. On
+/// deserialization it is set to `""` — `&'static str` cannot be recovered from runtime
+/// data without leaking memory. The `violation` field round-trips faithfully.
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone)]
+pub struct TaggedViolation<V = Violation> {
+    /// The [`display_name`][crate::engine::rule::ConstraintRule::display_name] of the
+    /// rule that produced this violation.
+    #[cfg_attr(
+        feature = "serde",
+        serde(deserialize_with = "serde_de_ignore_rule_name")
+    )]
+    pub rule: &'static str,
+
+    /// The violation that was emitted.
+    pub violation: V,
+}
+
+impl<V: core::fmt::Display> core::fmt::Display for TaggedViolation<V> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "[{}] {}", self.rule, self.violation)
+    }
+}
+
+#[cfg(feature = "serde")]
+fn serde_de_ignore_rule_name<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<&'static str, D::Error> {
+    use serde::Deserialize as _;
+    // &'static str cannot be recovered from deserialized data without leaking.
+    // Consume and discard the string; the violation field is preserved faithfully.
+    serde::de::IgnoredAny::deserialize(d)?;
+    Ok("")
+}
+
 /// Non-fatal warning attached to an accepted configuration.
 ///
 /// Warnings do not prevent a mode from being offered; they give the caller enough

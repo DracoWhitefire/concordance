@@ -235,17 +235,29 @@ so there is no logic duplication. `RejectedConfig` is re-exported from the crate
 
 ---
 
-### O3 — Rule names are not surfaced in violation output
+### O3 — Rule names are not surfaced in violation output ✓ resolved
 
-**File:** `src/engine/rule.rs`, `src/output/warning.rs`
+**File:** `src/engine/rule.rs`, `src/output/warning.rs`, `src/engine/mod.rs`, `src/builder.rs`
 **Severity:** Low
 
 `ConstraintRule::display_name()` returns a stable string identifier for each rule, but this
 name does not appear in any `Violation` variant. Callers cannot tell which rule produced a
 given violation without knowing the violation-to-rule mapping by convention.
 
-**Action:** Consider adding a `rule: &'static str` field to violations, or a parallel
-`(rule_name, Violation)` pair in the engine's output, so the rule name travels with its result.
+**Resolution:** Added `pub struct TaggedViolation<V = Violation> { rule: &'static str, violation: V }`
+to `output/warning.rs`. `DefaultConstraintEngine` now has `type Violation = TaggedViolation<V>` and
+tags each violation at collection time with `rule.display_name()`. `TaggedViolation<V>` implements
+`Display` as `"[rule_name] message"` and is re-exported from the crate root.
+
+Added `TaggingAdapter<R>` to `engine/rule.rs` — wraps a `ConstraintRule<V>` into a
+`ConstraintRule<TaggedViolation<V>>` so custom rules can be composed with the layered engine.
+`NegotiatorBuilder::with_extra_rule` now accepts a `ConstraintRule<V>` (inner type) and wraps
+it in `TaggingAdapter` automatically — callers implement rules against the inner violation type
+and receive tagged output at the engine boundary without any extra ceremony.
+
+`is_config_viable` return type updated to `CheckResult<Warning, TaggedViolation<Violation>>`.
+`TaggedViolation` is `#[non_exhaustive]` and derives serde `Serialize`; deserialization sets
+`rule` to `""` (round-tripping `&'static str` from runtime data requires leaking).
 
 ---
 

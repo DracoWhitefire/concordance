@@ -2,12 +2,13 @@
 
 use alloc::vec::Vec;
 
-use crate::engine::rule::{ConstraintRule, Layered};
+use crate::engine::rule::{ConstraintRule, Layered, TaggingAdapter};
 use crate::engine::{ConstraintEngine, DefaultConstraintEngine};
 use crate::enumerator::{CandidateEnumerator, DefaultEnumerator};
 use crate::output::config::NegotiatedConfig;
 use crate::output::rejection::RejectedConfig;
 use crate::output::trace::ReasoningTrace;
+use crate::output::warning::TaggedViolation;
 
 /// Return type of [`NegotiatorBuilder::negotiate_with_log`].
 pub type NegotiationLog<W, V> = (Vec<NegotiatedConfig<W>>, Vec<RejectedConfig<V>>);
@@ -85,17 +86,26 @@ impl<E, En, R> NegotiatorBuilder<E, En, R> {
 
     /// Appends an extra constraint rule to the engine without replacing it.
     ///
+    /// The rule returns `Option<V>` (the inner violation type); it is automatically
+    /// wrapped in [`TaggedViolation`] with the rule's
+    /// [`display_name`][crate::engine::rule::ConstraintRule::display_name] when a
+    /// violation is emitted.
+    ///
     /// The rule is evaluated after all built-in checks. In alloc mode,
     /// violations from both the base engine and the extra rule are collected;
     /// in no-alloc mode the engine short-circuits on the first failure, so
     /// the extra rule is only reached if all built-in checks pass.
-    pub fn with_extra_rule<X>(self, rule: X) -> NegotiatorBuilder<Layered<E, X>, En, R>
+    pub fn with_extra_rule<X, InnerV>(
+        self,
+        rule: X,
+    ) -> NegotiatorBuilder<Layered<E, TaggingAdapter<X>>, En, R>
     where
-        E: ConstraintEngine,
-        X: ConstraintRule<E::Violation>,
+        E: ConstraintEngine<Violation = TaggedViolation<InnerV>>,
+        X: ConstraintRule<InnerV>,
+        InnerV: crate::diagnostic::Diagnostic + 'static,
     {
         NegotiatorBuilder {
-            engine: Layered::new(self.engine, rule),
+            engine: Layered::new(self.engine, TaggingAdapter(rule)),
             enumerator: self.enumerator,
             ranker: self.ranker,
             policy: self.policy,
@@ -411,6 +421,34 @@ mod tests {
             configs.is_empty(),
             "AlwaysRejectRule must eliminate all candidates"
         );
+    }
+
+    /// Rejections from `DefaultConstraintEngine` carry rule names via `TaggedViolation`.
+    #[test]
+    fn default_engine_rejections_carry_rule_name() {
+        let mode = VideoMode::new(1920, 1080, 60, false);
+        // rgb8_sink has color caps so the enumerator generates candidates.
+        // A cable with max_tmds_clock=1_000 (1 MHz) is below 1080p@60's ~150 MHz
+        // TMDS requirement — TmdsClockCheck fires and candidates are rejected.
+        let sink = rgb8_sink();
+        let source = SourceCapabilities::default();
+        let cable = CableCapabilities {
+            max_tmds_clock: 1_000, // 1 MHz — intentionally far too low
+            ..CableCapabilities::unconstrained()
+        };
+
+        let (_, rejected) = NegotiatorBuilder::default()
+            .with_enumerator(SliceEnumerator::new(&[mode]))
+            .negotiate_with_log(&sink, &source, &cable);
+
+        assert!(!rejected.is_empty());
+        // Every rejected entry must have at least one tagged violation with a non-empty rule name.
+        for entry in &rejected {
+            assert!(
+                entry.violations.iter().any(|tv| !tv.rule.is_empty()),
+                "rule name must be non-empty for DefaultConstraintEngine violations"
+            );
+        }
     }
 
     /// `negotiate_with_log` returns rejections alongside accepted configs.

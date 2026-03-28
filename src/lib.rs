@@ -36,9 +36,10 @@ pub mod enumerator;
 pub mod ranker;
 
 pub use diagnostic::Diagnostic;
+pub use engine::rule::TaggingAdapter;
 pub use engine::{CheckList, MAX_WARNINGS};
 pub use error::Error;
-pub use output::warning::{LimitSource, Violation, Warning};
+pub use output::warning::{LimitSource, TaggedViolation, Violation, Warning};
 pub use probe::is_config_viable;
 pub use types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
 
