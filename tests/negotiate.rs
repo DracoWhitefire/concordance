@@ -108,7 +108,11 @@ fn single_tmds_mode_accepted() {
     assert_eq!(configs.len(), 1, "exactly one config expected");
     let cfg = &configs[0];
     assert_eq!(
-        (cfg.resolved.mode.width, cfg.resolved.mode.height, cfg.resolved.mode.refresh_rate),
+        (
+            cfg.resolved.mode.width,
+            cfg.resolved.mode.height,
+            cfg.resolved.mode.refresh_rate
+        ),
         (1920, 1080, 60)
     );
     assert_eq!(cfg.resolved.color_encoding, ColorFormat::Rgb444);
