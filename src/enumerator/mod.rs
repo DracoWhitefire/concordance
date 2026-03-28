@@ -298,7 +298,7 @@ mod tests {
     use display_types::cea861::{HdmiDscMaxSlices, HdmiForumDsc, HdmiForumSinkCap};
     use display_types::{ColorBitDepths, VideoMode};
 
-    fn mode(refresh_rate: u8) -> VideoMode {
+    fn mode(refresh_rate: u16) -> VideoMode {
         VideoMode::new(1920, 1080, refresh_rate, false)
     }
 

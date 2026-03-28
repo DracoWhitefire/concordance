@@ -58,6 +58,11 @@ impl NegotiationPolicy {
     };
 
     /// Prefer power saving: lower refresh rates and simpler configurations are ranked higher.
+    ///
+    /// Native resolution is still preferred even in power-saving mode. Running at a
+    /// non-native resolution forces the display scaler on, which consumes additional
+    /// power and introduces scaling artifacts — both outcomes that undermine the goal.
+    /// Power savings come from reduced refresh rate and color depth, not reduced resolution.
     pub const POWER_SAVING: Self = Self {
         prefer_native_resolution: true,
         prefer_color_fidelity: false,

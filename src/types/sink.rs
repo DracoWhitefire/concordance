@@ -85,6 +85,22 @@ pub struct SinkCapabilities {
     /// Maximum vertical rate in Hz.
     pub max_v_rate: Option<u16>,
 
+    /// Modes that support *only* YCbCr 4:2:0 (from the Y420 Video Data Block).
+    ///
+    /// Per CTA-861-H §7.5.11, other color encodings are not valid for these modes.
+    /// Populated by [`sink_capabilities_from_display`]; defaults to empty when
+    /// constructing [`SinkCapabilities`] manually.
+    #[cfg(any(feature = "alloc", feature = "std"))]
+    pub ycbcr420_exclusive_modes: SupportedModes,
+
+    /// Modes that *also* support YCbCr 4:2:0 (from the Y420 Capability Map Data Block).
+    ///
+    /// Other encodings remain valid for these modes; 4:2:0 is an additional option.
+    /// Populated by [`sink_capabilities_from_display`]; defaults to empty when
+    /// constructing [`SinkCapabilities`] manually.
+    #[cfg(any(feature = "alloc", feature = "std"))]
+    pub ycbcr420_capable_modes: SupportedModes,
+
     /// Supported color format and bit-depth combinations.
     ///
     /// Derived from the EDID base block color encoding field, the Deep Color flags
@@ -119,7 +135,7 @@ pub struct SinkCapabilities {
 pub fn sink_capabilities_from_display(
     caps: &display_types::DisplayCapabilities,
 ) -> (SinkCapabilities, Vec<SinkBuildWarning>) {
-    use display_types::cea861::Cea861Capabilities;
+    use display_types::cea861::{Cea861Capabilities, vic_to_mode};
     use display_types::{ColorBitDepth, color_capabilities_from_edid};
 
     let cea = caps.get_extension_data::<Cea861Capabilities>(0x02);
@@ -143,6 +159,39 @@ pub fn sink_capabilities_from_display(
         color_capabilities.ycbcr420 = color_capabilities.ycbcr420.with(ColorBitDepth::Depth8);
     }
 
+    // Modes that support *only* YCbCr 4:2:0 — direct VIC lookup from the Y420 VDB.
+    let (ycbcr420_exclusive_modes, _) = SupportedModes::from_vec(
+        cea.map(|c| {
+            c.y420_vics
+                .iter()
+                .filter_map(|&vic| vic_to_mode(vic))
+                .collect()
+        })
+        .unwrap_or_default(),
+    );
+
+    // Modes that *also* support YCbCr 4:2:0 — bitmap × SVD list from the Y420 CMB.
+    // Bit N of the bitmap corresponds to vics[N]; if set, that VIC supports 4:2:0.
+    let (ycbcr420_capable_modes, _) = SupportedModes::from_vec(
+        cea.map(|c| {
+            c.y420_capability_map
+                .iter()
+                .enumerate()
+                .flat_map(|(byte_idx, &byte)| {
+                    (0u8..8).filter_map(move |bit| {
+                        if byte & (1 << bit) != 0 {
+                            let vic_idx = byte_idx * 8 + bit as usize;
+                            c.vics.get(vic_idx).and_then(|&(vic, _)| vic_to_mode(vic))
+                        } else {
+                            None
+                        }
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default(),
+    );
+
     let (supported_modes, duplicates) = SupportedModes::from_vec(caps.supported_modes.clone());
     let mut warnings = Vec::new();
     if !duplicates.is_empty() {
@@ -152,6 +201,8 @@ pub fn sink_capabilities_from_display(
     (
         SinkCapabilities {
             supported_modes,
+            ycbcr420_exclusive_modes,
+            ycbcr420_capable_modes,
             max_pixel_clock_mhz: caps.max_pixel_clock_mhz,
             min_v_rate: caps.min_v_rate,
             max_v_rate: caps.max_v_rate,
@@ -375,6 +426,74 @@ mod tests {
         with_cea(&mut caps, cea);
         let (sink, _) = sink_capabilities_from_display(&caps);
         assert!(sink.hdr_static.is_some());
+    }
+
+    /// VICs in `y420_vics` are resolved to `VideoMode`s and stored in
+    /// `ycbcr420_exclusive_modes`. VIC 97 is 4K@60 Hz.
+    #[test]
+    fn y420_vics_populates_exclusive_modes() {
+        use display_types::cea861::vic_to_mode;
+        let mut caps = DisplayCapabilities::default();
+        let mut cea = Cea861Capabilities::new(Cea861Flags::empty());
+        cea.y420_vics = alloc::vec![97]; // 4K@60 Hz
+        with_cea(&mut caps, cea);
+        let (sink, _) = sink_capabilities_from_display(&caps);
+        let expected = vic_to_mode(97).unwrap();
+        assert!(
+            sink.ycbcr420_exclusive_modes.as_slice().contains(&expected),
+            "VIC 97 must appear in ycbcr420_exclusive_modes"
+        );
+        assert!(
+            sink.ycbcr420_capable_modes.as_slice().is_empty(),
+            "ycbcr420_capable_modes must be empty when only y420_vics is set"
+        );
+    }
+
+    /// A set bit N in `y420_capability_map` resolves through `vics[N]` to a
+    /// `VideoMode` stored in `ycbcr420_capable_modes`.
+    #[test]
+    fn y420_capability_map_populates_capable_modes() {
+        use display_types::cea861::vic_to_mode;
+        let mut caps = DisplayCapabilities::default();
+        let mut cea = Cea861Capabilities::new(Cea861Flags::empty());
+        // Put VIC 16 (1080p@60) at index 0 in the SVD list.
+        cea.vics = alloc::vec![(16, true)];
+        // Bit 0 of byte 0 set → vics[0] = VIC 16 supports 4:2:0 additionally.
+        cea.y420_capability_map = alloc::vec![0b0000_0001];
+        with_cea(&mut caps, cea);
+        let (sink, _) = sink_capabilities_from_display(&caps);
+        let expected = vic_to_mode(16).unwrap();
+        assert!(
+            sink.ycbcr420_capable_modes.as_slice().contains(&expected),
+            "VIC 16 must appear in ycbcr420_capable_modes"
+        );
+        assert!(
+            sink.ycbcr420_exclusive_modes.as_slice().is_empty(),
+            "ycbcr420_exclusive_modes must be empty when only y420_capability_map is set"
+        );
+    }
+
+    /// A clear bit in `y420_capability_map` must not produce an entry.
+    #[test]
+    fn y420_capability_map_clear_bit_excluded() {
+        use display_types::cea861::vic_to_mode;
+        let mut caps = DisplayCapabilities::default();
+        let mut cea = Cea861Capabilities::new(Cea861Flags::empty());
+        cea.vics = alloc::vec![(16, true), (97, false)];
+        // Bit 0 clear, bit 1 set → only vics[1] = VIC 97 is 4:2:0 capable.
+        cea.y420_capability_map = alloc::vec![0b0000_0010];
+        with_cea(&mut caps, cea);
+        let (sink, _) = sink_capabilities_from_display(&caps);
+        let vic16 = vic_to_mode(16).unwrap();
+        let vic97 = vic_to_mode(97).unwrap();
+        assert!(
+            !sink.ycbcr420_capable_modes.as_slice().contains(&vic16),
+            "VIC 16 (bit clear) must not appear"
+        );
+        assert!(
+            sink.ycbcr420_capable_modes.as_slice().contains(&vic97),
+            "VIC 97 (bit set) must appear"
+        );
     }
 
     /// Colorimetry data in the CEA block is propagated to `colorimetry`.

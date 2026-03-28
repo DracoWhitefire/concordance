@@ -43,11 +43,8 @@ The following are out of scope:
 - `CableCapabilities` — a struct defined in this library, filled in by the caller
 
 **Output:** A ranked iterator of `NegotiatedConfig<W>`, each entry containing:
-- Resolved `VideoMode`
-- Color format and bit depth
-- FRL tier (or TMDS, if applicable)
-- DSC required flag
-- VRR applicability
+- `resolved: ResolvedDisplayConfig` — the hardware-ready output: `VideoMode`, color format
+  and bit depth, FRL tier (or TMDS), DSC required flag, VRR applicability
 - `Vec<W>` — non-fatal warnings about the accepted configuration
 - `ReasoningTrace`
 
@@ -57,7 +54,7 @@ The following are out of scope:
 parsed `DisplayCapabilities` (from `display-types`) is the concern of the integration layer,
 not this library.
 
-```rust
+```text
 #[non_exhaustive]
 pub struct SinkCapabilities {
     // Video modes declared by the display
@@ -96,7 +93,7 @@ it validates a caller-supplied candidate rather than enumerating one.
 actual GPU hardware is the concern of the source capability discovery library in the
 integration layer, not this library.
 
-```rust
+```text
 #[non_exhaustive]
 pub struct SourceCapabilities {
     pub max_tmds_clock: u32,
@@ -119,7 +116,7 @@ limits and may include vendor quirks.
 actual cable identification (e.g. HDMI cable type marker read from the sink EDID, or
 user-supplied override) is the concern of the integration layer, not this library.
 
-```rust
+```text
 #[non_exhaustive]
 pub struct CableCapabilities {
     pub hdmi_spec: HdmiSpec,         // e.g. Hdmi14, Hdmi20, Hdmi21
@@ -144,7 +141,7 @@ default implementation. Callers can substitute any component without forking the
 The constraint engine additionally supports rule injection — adding checks on top of the
 default implementation — via a `ConstraintRule` trait and a `Layered` combinator.
 
-```rust
+```text
 pub trait ConstraintEngine { ... }
 pub trait CandidateEnumerator { ... }
 pub trait ConfigRanker { ... }
@@ -164,7 +161,7 @@ without touching the rest of the pipeline.
 
 This is also exposed directly as the `no_std`-compatible binary probe:
 
-```rust
+```text
 pub fn is_config_viable(
     sink: &SinkCapabilities,
     source: &SourceCapabilities,
@@ -176,6 +173,39 @@ pub fn is_config_viable(
 The ranked iterator is built on top of this primitive. Firmware and embedded consumers that
 cannot afford allocation or iteration use this function directly.
 
+#### Constructing a `VideoMode` on firmware targets
+
+`is_config_viable` requires a `CandidateConfig` holding a `&VideoMode`. Firmware that does
+not go through EDID parsing has two construction paths:
+
+**Standard CTA modes (recommended)** — use `display_types::cea861::vic_to_mode`. Every
+standard HDMI mode has a Video Identification Code; `vic_to_mode` returns a `VideoMode` with
+the exact pixel clock from the CEA-861 timing table, so the pixel clock constraint checks are
+precise:
+
+```rust,no_run
+# use display_types::cea861::vic_to_mode;
+// VIC 97 = 3840×2160 @ 60 Hz, 594 000 kHz
+let mode = vic_to_mode(97).expect("VIC 97 is in the table");
+```
+
+VIC numbers for common modes: 16 = 1080p@60, 31 = 1080p@50, 93 = 4K@24, 97 = 4K@60,
+107 = 4K@120 (via FRL). The full table is in `display-types/src/cea861/vic_table.rs`.
+
+**Non-CTA / custom timings** — use `VideoMode::new` followed by `.with_pixel_clock` if the
+exact clock is known:
+
+```rust,no_run
+# use display_types::VideoMode;
+// Custom panel: supply the exact pixel clock from the PLL or hardware register.
+let mode = VideoMode::new(1920, 1200, 60, false).with_pixel_clock(154_000);
+```
+
+Without `.with_pixel_clock`, the pixel clock is derived via CVT-RB estimation, which
+under-estimates for HDMI Forum CTA modes by roughly 10–15% and can produce false accepts in
+bandwidth ceiling checks. For custom timings where the exact clock is unavailable, the estimate
+is the best option — just note the caveat for modes near a bandwidth ceiling.
+
 #### Rule injection
 
 `ConstraintEngine` enables full replacement of the constraint policy, but replacement
@@ -183,77 +213,68 @@ requires reimplementing all HDMI specification rules — forking in disguise. Fo
 case of adding rules on top of the default checks, a finer-grained unit of extensibility
 is provided:
 
-```rust
-pub trait ConstraintRule {
-    type Warning: Diagnostic;
-    type Violation: Diagnostic;
-
+```text
+pub trait ConstraintRule<V: Diagnostic> {
+    fn display_name(&self) -> &'static str;
     fn check(
         &self,
         sink: &SinkCapabilities,
         source: &SourceCapabilities,
         cable: &CableCapabilities,
-        config: &CandidateConfig,
-    ) -> CheckResult<Self::Warning, Self::Violation>;
+        config: &CandidateConfig<'_>,
+    ) -> Option<V>;
 }
 ```
 
-`ConstraintRule` is the unit of a single check. `ConstraintEngine::check` is identical in
-shape, so every engine is also a valid rule and the two compose cleanly.
+`ConstraintRule<V>` is the unit of a single check — it either finds a violation of type
+`V` or it doesn't. `ConstraintEngine` coordinates a full pass (collecting all violations,
+or short-circuiting on the first in no-alloc mode) and additionally supports warnings.
 
-A `Layered<Base, Extra>` combinator chains a base engine with an additional rule. Two
-composition strategies are supported:
+A `Layered<E, R>` combinator extends a base engine with an additional rule, running both
+in sequence. The extra rule must produce the same violation type as the engine:
 
-**Shared types (default path)** — the extra rule emits the same `Warning` and `Violation`
-types as the base engine. No conversion is required and the common case (adding rules on
-top of the built-in types) involves no boilerplate:
-
-```rust
-// Extra must share the base engine's associated types.
-impl<B, R> ConstraintEngine for Layered<B, R>
+```text
+impl<E, R> ConstraintEngine for Layered<E, R>
 where
-    B: ConstraintEngine,
-    R: ConstraintRule<Warning = B::Warning, Violation = B::Violation>,
+    E: ConstraintEngine,
+    R: ConstraintRule<E::Violation>,
 {
-    type Warning = B::Warning;
-    type Violation = B::Violation;
-    // ...
-}
-```
-
-**`From` bounds (escape hatch)** — when the extra rule emits distinct types, both are
-converted into a common output type via `From`. Full type fidelity is preserved; the
-caller names the output types explicitly:
-
-```rust
-impl<B, R, W, V> ConstraintEngine for Layered<B, R>
-where
-    B: ConstraintEngine<Warning: Into<W>, Violation: Into<V>>,
-    R: ConstraintRule<Warning: Into<W>, Violation: Into<V>>,
-    W: Diagnostic,
-    V: Diagnostic,
-{
-    type Warning = W;
-    type Violation = V;
+    type Warning = E::Warning;
+    type Violation = E::Violation;
     // ...
 }
 ```
 
 `NegotiatorBuilder` exposes a composing entry point so a caller never needs to construct
-`Layered` directly:
+`Layered` directly. The builder wraps the supplied rule in a `TaggingAdapter` that
+automatically prefixes each violation with the rule's `display_name`, matching the tagging
+format of the built-in violations:
 
-```rust
+```text
 impl NegotiatorBuilder<E, En, R> {
-    pub fn with_extra_rule<Rule>(self, rule: Rule) -> NegotiatorBuilder<Layered<E, Rule>, En, R>
+    pub fn with_extra_rule<X, V>(self, rule: X) -> NegotiatorBuilder<Layered<E, TaggingAdapter<X>>, En, R>
     where
-        Rule: ConstraintRule<Warning = E::Warning, Violation = E::Violation>,
+        E: ConstraintEngine<Violation = TaggedViolation<V>>,
+        X: ConstraintRule<V>,
+        V: Diagnostic + 'static,
     { ... }
 }
 ```
 
 A platform-specific caller writes only their rule and passes it in:
 
-```rust
+```rust,no_run
+# use concordance::{NegotiatorBuilder, CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities, Violation};
+# use concordance::engine::rule::ConstraintRule;
+# struct PlatformBandwidthRule { max_khz: u32 }
+# impl PlatformBandwidthRule { fn new(max_khz: u32) -> Self { Self { max_khz } } }
+# impl ConstraintRule<Violation> for PlatformBandwidthRule {
+#     fn display_name(&self) -> &'static str { "platform_bandwidth" }
+#     fn check(&self, _: &SinkCapabilities, _: &SourceCapabilities,
+#              _: &CableCapabilities, _: &CandidateConfig<'_>) -> Option<Violation> { None }
+# }
+# let (sink, source, cable) = (SinkCapabilities::default(), SourceCapabilities::default(), CableCapabilities::default());
+# let limits = 594_000u32;
 let configs = NegotiatorBuilder::default()
     .with_extra_rule(PlatformBandwidthRule::new(limits))
     .negotiate(&sink, &source, &cable);
@@ -263,6 +284,49 @@ let configs = NegotiatorBuilder::default()
 internally, so advanced callers who need selective control — including or excluding
 specific built-in checks — can compose their own engine from individual rules without
 reimplementing any specification logic.
+
+#### Hard filters for compositor and driver callers
+
+`with_extra_rule` is the right mechanism for any go/no-go constraint that does not belong
+in the HDMI specification rule set — resolution floors, refresh rate ceilings, aspect ratio
+enforcement, or platform-specific bandwidth caps. A rule that returns `Some(violation)` for
+every candidate outside an acceptable range will exclude those candidates from the ranked
+output cleanly, without touching the ranker or the policy.
+
+Examples:
+
+```text
+// Exclude all modes below 1080p total pixels.
+struct MinResolutionRule { min_pixels: u32 }
+
+impl ConstraintRule<MyViolation> for MinResolutionRule {
+    fn display_name(&self) -> &'static str { "min_resolution" }
+    fn check(&self, ..., config: &CandidateConfig<'_>) -> Option<MyViolation> {
+        let pixels = config.mode.width as u32 * config.mode.height as u32;
+        if pixels < self.min_pixels { Some(MyViolation::ResolutionBelowMinimum) } else { None }
+    }
+}
+
+// Exclude interlaced modes entirely.
+struct NoInterlacedRule;
+
+impl ConstraintRule<MyViolation> for NoInterlacedRule {
+    fn display_name(&self) -> &'static str { "no_interlaced" }
+    fn check(&self, ..., config: &CandidateConfig<'_>) -> Option<MyViolation> {
+        if config.mode.interlaced { Some(MyViolation::InterlacedNotPermitted) } else { None }
+    }
+}
+
+let configs = NegotiatorBuilder::default()
+    .with_extra_rule(MinResolutionRule { min_pixels: 1920 * 1080 })
+    .with_extra_rule(NoInterlacedRule)
+    .negotiate(&sink, &source, &cable);
+```
+
+Soft preferences — preferring a specific refresh rate, or ranking RGB above YCbCr within the
+same resolution — belong in the `NegotiationPolicy` or a custom `ConfigRanker`, not in
+constraint rules. The distinction: a constraint rule eliminates candidates; a ranker orders
+those that remain.
 
 ### 2. Enumerator
 
@@ -357,9 +421,9 @@ higher-level policy evolves.
 
 `NegotiatedConfig` is generic over the warning type, defaulting to the built-in `Warning`:
 
-```rust
+```text
 pub struct NegotiatedConfig<W = Warning> {
-    // resolved fields ...
+    pub resolved: ResolvedDisplayConfig,
     pub warnings: Vec<W>,
     pub trace: ReasoningTrace,
 }
@@ -405,7 +469,7 @@ Fatal errors (invalid inputs, internal invariant violations) are represented as 
 `Violation`, used in `is_config_viable`, is a `thiserror` error type with an associated
 type on `ConstraintEngine`:
 
-```rust
+```text
 pub trait ConstraintEngine {
     type Warning: Diagnostic;
     type Violation: Diagnostic;
@@ -437,7 +501,7 @@ rather than refusing to negotiate. Callers decide how strict to be.
 
 HDMI link capability is determined by:
 
-```
+```text
 Source + Sink + Cable → Link Training → Actual Limits
 ```
 

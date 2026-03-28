@@ -2,11 +2,18 @@
 
 use alloc::vec::Vec;
 
-use crate::engine::rule::{ConstraintRule, Layered};
+use display_types::ResolvedDisplayConfig;
+
+use crate::engine::rule::{ConstraintRule, Layered, TaggingAdapter};
 use crate::engine::{ConstraintEngine, DefaultConstraintEngine};
 use crate::enumerator::{CandidateEnumerator, DefaultEnumerator};
 use crate::output::config::NegotiatedConfig;
+use crate::output::rejection::RejectedConfig;
 use crate::output::trace::ReasoningTrace;
+use crate::output::warning::TaggedViolation;
+
+/// Return type of [`NegotiatorBuilder::negotiate_with_log`].
+pub type NegotiationLog<W, V> = (Vec<NegotiatedConfig<W>>, Vec<RejectedConfig<V>>);
 use crate::ranker::policy::NegotiationPolicy;
 use crate::ranker::{ConfigRanker, DefaultRanker};
 use crate::types::{CableCapabilities, SinkCapabilities, SourceCapabilities};
@@ -81,17 +88,26 @@ impl<E, En, R> NegotiatorBuilder<E, En, R> {
 
     /// Appends an extra constraint rule to the engine without replacing it.
     ///
+    /// The rule returns `Option<V>` (the inner violation type); it is automatically
+    /// wrapped in [`TaggedViolation`] with the rule's
+    /// [`display_name`][crate::engine::rule::ConstraintRule::display_name] when a
+    /// violation is emitted.
+    ///
     /// The rule is evaluated after all built-in checks. In alloc mode,
     /// violations from both the base engine and the extra rule are collected;
     /// in no-alloc mode the engine short-circuits on the first failure, so
     /// the extra rule is only reached if all built-in checks pass.
-    pub fn with_extra_rule<X>(self, rule: X) -> NegotiatorBuilder<Layered<E, X>, En, R>
+    pub fn with_extra_rule<X, InnerV>(
+        self,
+        rule: X,
+    ) -> NegotiatorBuilder<Layered<E, TaggingAdapter<X>>, En, R>
     where
-        E: ConstraintEngine,
-        X: ConstraintRule<E::Violation>,
+        E: ConstraintEngine<Violation = TaggedViolation<InnerV>>,
+        X: ConstraintRule<InnerV>,
+        InnerV: crate::diagnostic::Diagnostic + 'static,
     {
         NegotiatorBuilder {
-            engine: Layered::new(self.engine, rule),
+            engine: Layered::new(self.engine, TaggingAdapter(rule)),
             enumerator: self.enumerator,
             ranker: self.ranker,
             policy: self.policy,
@@ -114,46 +130,88 @@ where
     /// Runs the negotiation pipeline and returns a ranked list of viable configurations.
     ///
     /// Candidates are enumerated, validated by the constraint engine, deduplicated,
-    /// and ranked according to the policy. Every rejection is recorded in the
-    /// reasoning trace of the candidate.
+    /// and ranked according to the policy.
+    ///
+    /// To also capture why each rejected candidate failed, use
+    /// [`negotiate_with_log`][Self::negotiate_with_log] instead.
     pub fn negotiate(
         &self,
         sink: &SinkCapabilities,
         source: &SourceCapabilities,
         cable: &CableCapabilities,
     ) -> Vec<NegotiatedConfig<E::Warning>> {
+        let (accepted, _) = self.negotiate_inner(sink, source, cable, false);
+        accepted
+    }
+
+    /// Runs the negotiation pipeline and returns both the accepted configurations and a
+    /// per-candidate rejection log.
+    ///
+    /// The rejection log contains one [`RejectedConfig`] entry for every candidate that
+    /// failed the constraint engine, in enumeration order. Each entry records the same
+    /// five fields as [`CandidateConfig`][crate::CandidateConfig] plus the violations that
+    /// caused the rejection.
+    ///
+    /// Use this in diagnostic tools or test harnesses where you need to explain why a
+    /// specific mode was excluded. The allocation cost is non-trivial on large mode lists;
+    /// prefer [`negotiate`][Self::negotiate] when the rejection detail is not needed.
+    pub fn negotiate_with_log(
+        &self,
+        sink: &SinkCapabilities,
+        source: &SourceCapabilities,
+        cable: &CableCapabilities,
+    ) -> NegotiationLog<E::Warning, E::Violation> {
+        self.negotiate_inner(sink, source, cable, true)
+    }
+
+    fn negotiate_inner(
+        &self,
+        sink: &SinkCapabilities,
+        source: &SourceCapabilities,
+        cable: &CableCapabilities,
+        collect_rejections: bool,
+    ) -> NegotiationLog<E::Warning, E::Violation> {
         let mut accepted: Vec<NegotiatedConfig<E::Warning>> = Vec::new();
+        let mut rejected: Vec<RejectedConfig<E::Violation>> = Vec::new();
 
         for config in self.enumerator.enumerate(sink, source, cable) {
-            let Ok(warnings) = self.engine.check(sink, source, cable, &config) else {
-                continue;
-            };
+            match self.engine.check(sink, source, cable, &config) {
+                Ok(warnings) => {
+                    let negotiated = NegotiatedConfig {
+                        resolved: ResolvedDisplayConfig::new(
+                            config.mode.clone(),
+                            config.color_encoding,
+                            config.bit_depth,
+                            config.frl_rate,
+                            config.dsc_enabled,
+                            false,
+                        ),
+                        warnings,
+                        trace: ReasoningTrace::new(),
+                    };
 
-            let negotiated = NegotiatedConfig {
-                mode: config.mode.clone(),
-                color_encoding: config.color_encoding,
-                bit_depth: config.bit_depth,
-                frl_rate: config.frl_rate,
-                dsc_required: config.dsc_enabled,
-                vrr_applicable: false,
-                warnings,
-                trace: ReasoningTrace::new(),
-            };
-
-            // O(n²) dedup — candidate lists are small enough that this is acceptable.
-            let is_dup = accepted.iter().any(|c| {
-                c.mode == negotiated.mode
-                    && c.color_encoding == negotiated.color_encoding
-                    && c.bit_depth == negotiated.bit_depth
-                    && c.frl_rate == negotiated.frl_rate
-                    && c.dsc_required == negotiated.dsc_required
-            });
-            if !is_dup {
-                accepted.push(negotiated);
+                    // O(n²) dedup — candidate lists are small enough that this is acceptable.
+                    let is_dup = accepted.iter().any(|c| c.resolved == negotiated.resolved);
+                    if !is_dup {
+                        accepted.push(negotiated);
+                    }
+                }
+                Err(violations) => {
+                    if collect_rejections {
+                        rejected.push(RejectedConfig {
+                            mode: config.mode.clone(),
+                            color_encoding: config.color_encoding,
+                            bit_depth: config.bit_depth,
+                            frl_rate: config.frl_rate,
+                            dsc_enabled: config.dsc_enabled,
+                            violations,
+                        });
+                    }
+                }
             }
         }
 
-        self.ranker.rank(accepted, &self.policy)
+        (self.ranker.rank(accepted, &self.policy), rejected)
     }
 }
 
@@ -268,7 +326,7 @@ mod tests {
             .negotiate(&sink, &source, &cable);
 
         assert_eq!(configs.len(), 1);
-        assert_eq!(configs[0].mode.width, 1920);
+        assert_eq!(configs[0].resolved.mode.width, 1920);
     }
 
     /// `with_engine` replaces the constraint check; an accept-all engine admits a
@@ -337,10 +395,10 @@ mod tests {
 
         assert_eq!(configs.len(), 2);
         assert_eq!(
-            configs[0].mode.width, 1920,
+            configs[0].resolved.mode.width, 1920,
             "ReverseRanker must put 1080p first"
         );
-        assert_eq!(configs[1].mode.width, 3840);
+        assert_eq!(configs[1].resolved.mode.width, 3840);
     }
 
     /// `with_extra_rule` appends a constraint on top of the default engine;
@@ -361,6 +419,104 @@ mod tests {
             configs.is_empty(),
             "AlwaysRejectRule must eliminate all candidates"
         );
+    }
+
+    /// Rejections from `DefaultConstraintEngine` carry rule names via `TaggedViolation`.
+    #[test]
+    fn default_engine_rejections_carry_rule_name() {
+        let mode = VideoMode::new(1920, 1080, 60, false);
+        // rgb8_sink has color caps so the enumerator generates candidates.
+        // A cable with max_tmds_clock=1_000 (1 MHz) is below 1080p@60's ~150 MHz
+        // TMDS requirement — TmdsClockCheck fires and candidates are rejected.
+        let sink = rgb8_sink();
+        let source = SourceCapabilities::default();
+        let cable = CableCapabilities {
+            max_tmds_clock: 1_000, // 1 MHz — intentionally far too low
+            ..CableCapabilities::unconstrained()
+        };
+
+        let (_, rejected) = NegotiatorBuilder::default()
+            .with_enumerator(SliceEnumerator::new(&[mode]))
+            .negotiate_with_log(&sink, &source, &cable);
+
+        assert!(!rejected.is_empty());
+        // Every rejected entry must have at least one tagged violation with a non-empty rule name.
+        for entry in &rejected {
+            assert!(
+                entry.violations.iter().any(|tv| !tv.rule.is_empty()),
+                "rule name must be non-empty for DefaultConstraintEngine violations"
+            );
+        }
+    }
+
+    /// `negotiate_with_log` returns rejections alongside accepted configs.
+    #[test]
+    fn negotiate_with_log_captures_rejections() {
+        let mode = VideoMode::new(1920, 1080, 60, false);
+        let sink = rgb8_sink(); // only RGB 8 bpc
+        let source = SourceCapabilities::default();
+        let cable = CableCapabilities::unconstrained();
+
+        // SliceEnumerator × rgb8_sink will enumerate RGB 8 bpc (accepted) and other
+        // encodings (rejected). Use RejectAllEngine to force every candidate into the log.
+        let (accepted, rejected) = NegotiatorBuilder::default()
+            .with_enumerator(SliceEnumerator::new(&[mode]))
+            .with_engine(RejectAllEngine)
+            .negotiate_with_log(&sink, &source, &cable);
+
+        assert!(accepted.is_empty(), "RejectAllEngine must accept nothing");
+        assert!(!rejected.is_empty(), "rejected log must be non-empty");
+        // Every entry must carry at least one violation.
+        for entry in &rejected {
+            assert!(
+                !entry.violations.is_empty(),
+                "each rejection must carry at least one violation"
+            );
+            assert!(
+                entry
+                    .violations
+                    .iter()
+                    .any(|v| matches!(v, Violation::ColorEncodingUnsupported)),
+                "each rejection must carry the engine violation"
+            );
+        }
+    }
+
+    /// `negotiate` (without log) produces the same accepted set as `negotiate_with_log`.
+    #[test]
+    fn negotiate_and_negotiate_with_log_agree_on_accepted() {
+        let mode = VideoMode::new(1920, 1080, 60, false);
+        let sink = rgb8_sink();
+        let source = SourceCapabilities::default();
+        let cable = CableCapabilities::unconstrained();
+
+        let accepted_plain = NegotiatorBuilder::default()
+            .with_enumerator(SliceEnumerator::new(&[mode.clone()]))
+            .negotiate(&sink, &source, &cable);
+
+        let (accepted_log, _) = NegotiatorBuilder::default()
+            .with_enumerator(SliceEnumerator::new(&[mode]))
+            .negotiate_with_log(&sink, &source, &cable);
+
+        assert_eq!(
+            accepted_plain.len(),
+            accepted_log.len(),
+            "both methods must agree on the accepted count"
+        );
+    }
+
+    /// `negotiate` does not allocate a rejection log (smoke: just checks it compiles
+    /// and runs without panicking).
+    #[test]
+    fn negotiate_without_log_does_not_panic() {
+        let mode = VideoMode::new(1920, 1080, 60, false);
+        let sink = rgb8_sink();
+        let source = SourceCapabilities::default();
+        let cable = CableCapabilities::unconstrained();
+        let _ = NegotiatorBuilder::default()
+            .with_enumerator(SliceEnumerator::new(&[mode]))
+            .with_engine(RejectAllEngine)
+            .negotiate(&sink, &source, &cable);
     }
 
     /// The pipeline deduplicates candidates that are identical across all five
