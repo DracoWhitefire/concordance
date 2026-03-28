@@ -135,7 +135,7 @@ rates above 255 Hz for lower resolutions.
 
 ## API ergonomics
 
-### E1 — `SourceCapabilities` and `CableCapabilities` have no constructors
+### E1 — `SourceCapabilities` and `CableCapabilities` have no constructors ✓ resolved
 
 **File:** `src/types/source.rs`, `src/types/cable.rs`
 **Severity:** Medium
@@ -145,8 +145,10 @@ literal syntax (including the `..Default::default()` spread) — they must call
 `Default::default()` and then assign fields individually. This is workable but asymmetric with
 `SupportedModes::from_vec` and surprising to callers who try the natural struct literal form.
 
-**Action:** Add named constructors (e.g. `SourceCapabilities::new(max_tmds_clock, max_frl_rate,
-dsc, quirks)`) or a builder, so the construction path is obvious and compile-error-free.
+**Resolution:** Added `SourceCapabilities::new(max_tmds_clock, max_frl_rate, dsc)` and
+`CableCapabilities::new(hdmi_spec, max_frl_rate, max_tmds_clock)` as `const fn` constructors.
+Quirks default to `QuirkFlags::empty()` and can be set via field assignment after construction.
+Signatures are intentionally minimal for now and will be revisited when the field set stabilises.
 
 ---
 

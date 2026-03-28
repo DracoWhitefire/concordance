@@ -44,6 +44,15 @@ impl Default for CableCapabilities {
 }
 
 impl CableCapabilities {
+    /// Constructs a `CableCapabilities` with explicit values.
+    pub const fn new(hdmi_spec: HdmiSpec, max_frl_rate: HdmiForumFrl, max_tmds_clock: u32) -> Self {
+        Self {
+            hdmi_spec,
+            max_frl_rate,
+            max_tmds_clock,
+        }
+    }
+
     /// Returns a cable with no constraints — equivalent to assuming source and sink limits only.
     ///
     /// Useful for callers that have no cable information and wish to fall back to

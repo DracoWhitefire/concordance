@@ -74,3 +74,22 @@ impl Default for SourceCapabilities {
         }
     }
 }
+
+impl SourceCapabilities {
+    /// Constructs a `SourceCapabilities` with explicit values and no quirks.
+    ///
+    /// Pass `max_tmds_clock: 0` to indicate no TMDS limit (the source is unconstrained
+    /// or operates exclusively over FRL). Pass `dsc: None` for sources without DSC.
+    pub const fn new(
+        max_tmds_clock: u32,
+        max_frl_rate: HdmiForumFrl,
+        dsc: Option<DscCapabilities>,
+    ) -> Self {
+        Self {
+            max_tmds_clock,
+            max_frl_rate,
+            dsc,
+            quirks: QuirkFlags::empty(),
+        }
+    }
+}
