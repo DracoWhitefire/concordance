@@ -299,6 +299,51 @@ internally, so advanced callers who need selective control — including or excl
 specific built-in checks — can compose their own engine from individual rules without
 reimplementing any specification logic.
 
+#### Hard filters for compositor and driver callers
+
+`with_extra_rule` is the right mechanism for any go/no-go constraint that does not belong
+in the HDMI specification rule set — resolution floors, refresh rate ceilings, aspect ratio
+enforcement, or platform-specific bandwidth caps. A rule that returns `Some(violation)` for
+every candidate outside an acceptable range will exclude those candidates from the ranked
+output cleanly, without touching the ranker or the policy.
+
+Examples:
+
+```rust
+// Exclude all modes below 1080p total pixels.
+struct MinResolutionRule { min_pixels: u32 }
+
+impl ConstraintRule<Violation> for MinResolutionRule {
+    fn display_name(&self) -> &'static str { "min_resolution" }
+    fn check(&self, _: &SinkCapabilities, _: &SourceCapabilities,
+             _: &CableCapabilities, config: &CandidateConfig<'_>) -> Option<Violation> {
+        let pixels = config.mode.width as u32 * config.mode.height as u32;
+        if pixels < self.min_pixels { Some(Violation::ResolutionBelowMinimum) } else { None }
+    }
+}
+
+// Exclude interlaced modes entirely.
+struct NoInterlacedRule;
+
+impl ConstraintRule<Violation> for NoInterlacedRule {
+    fn display_name(&self) -> &'static str { "no_interlaced" }
+    fn check(&self, _: &SinkCapabilities, _: &SourceCapabilities,
+             _: &CableCapabilities, config: &CandidateConfig<'_>) -> Option<Violation> {
+        if config.mode.interlaced { Some(Violation::InterlacedNotPermitted) } else { None }
+    }
+}
+
+let configs = NegotiatorBuilder::default()
+    .with_extra_rule(MinResolutionRule { min_pixels: 1920 * 1080 })
+    .with_extra_rule(NoInterlacedRule)
+    .negotiate(&sink, &source, &cable);
+```
+
+Soft preferences — preferring a specific refresh rate, or ranking RGB above YCbCr within the
+same resolution — belong in the `NegotiationPolicy` or a custom `ConfigRanker`, not in
+constraint rules. The distinction: a constraint rule eliminates candidates; a ranker orders
+those that remain.
+
 ### 2. Enumerator
 
 Generates all candidate configurations from the intersection of sink, source, and cable
