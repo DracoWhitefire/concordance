@@ -168,3 +168,38 @@ pub enum Violation {
         max_hz: u16,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    extern crate alloc;
+    use alloc::format;
+
+    #[test]
+    fn limit_source_display() {
+        assert_eq!(format!("{}", LimitSource::Sink), "sink");
+        assert_eq!(format!("{}", LimitSource::Source), "source");
+        assert_eq!(format!("{}", LimitSource::Cable), "cable");
+    }
+
+    #[test]
+    fn tagged_violation_display_includes_rule_and_message() {
+        let tv = TaggedViolation {
+            rule: "my_rule",
+            violation: Violation::ColorEncodingUnsupported,
+        };
+        assert_eq!(
+            format!("{tv}"),
+            "[my_rule] color encoding not supported by sink"
+        );
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn tagged_violation_rule_deserializes_as_empty_string() {
+        let json = r#"{"rule":"original","violation":"ColorEncodingUnsupported"}"#;
+        let de: TaggedViolation<Violation> = serde_json::from_str(json).unwrap();
+        assert_eq!(de.rule, "");
+        assert!(matches!(de.violation, Violation::ColorEncodingUnsupported));
+    }
+}

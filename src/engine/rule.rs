@@ -269,6 +269,22 @@ mod tests {
         }
     }
 
+    // --- TaggingAdapter ---
+
+    #[test]
+    fn tagging_adapter_display_name_delegates_to_inner() {
+        let adapter = TaggingAdapter(AlwaysPass);
+        assert_eq!(
+            ConstraintRule::<TaggedViolation<Violation>>::display_name(&adapter),
+            "always_pass"
+        );
+        let adapter = TaggingAdapter(FailEncoding);
+        assert_eq!(
+            ConstraintRule::<TaggedViolation<Violation>>::display_name(&adapter),
+            "fail_encoding"
+        );
+    }
+
     // --- Layered<R1, R2> as ConstraintRule ---
 
     #[test]
