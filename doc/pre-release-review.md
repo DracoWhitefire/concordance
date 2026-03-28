@@ -321,7 +321,7 @@ type in `display-types` may not have a public constructor for this.
 
 ---
 
-### A2 — `NegotiatedConfig` does not carry a caller-supplied token (kernel/driver)
+### A2 — `NegotiatedConfig` does not carry a caller-supplied token (kernel/driver) ✓ resolved
 
 **File:** `src/output/config.rs`
 **Severity:** Low
@@ -332,8 +332,14 @@ identify a KMS mode (two detailed timing descriptors at the same resolution and 
 different pixel clocks are common). There is no way to attach a caller-supplied token (e.g. a
 KMS mode ID) to a `VideoMode` so it survives the pipeline round-trip.
 
-**Action:** Consider a `CandidateConfig.tag: Option<u64>` or a generic tag parameter passed
-through to `NegotiatedConfig`. Alternatively, document the KMS correlation strategy explicitly.
+**Resolution:** Added `ModeSource` enum (`Vic(u8)`, `DmtId(u16)`, `DtdIndex(u8)`) and
+`VideoMode::source: Option<ModeSource>` to `display-types`. `vic_to_mode` and `dmt_to_mode`
+now populate it automatically; parsers set it via `VideoMode::with_source`. The identifier
+that piaf previously discarded (VIC number, DMT ID, DTD index) now survives into
+`NegotiatedConfig.mode.source`, giving drivers an unambiguous correlation key. For VIC-sourced
+modes — the vast majority of KMS display modes — `mode.source == Some(ModeSource::Vic(vic))`
+is now the reliable match. For DTD-only modes, the 4-tuple `(width, height, refresh_rate,
+pixel_clock_khz)` remains the fallback.
 
 ---
 
