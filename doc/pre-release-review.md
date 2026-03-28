@@ -364,7 +364,7 @@ and "Multi-output model gaps".
 
 ## Documentation
 
-### D1 — `doc/architecture.md` is not linked from `docs.rs`
+### D1 — `doc/architecture.md` is not linked from `docs.rs` ✓ resolved
 
 **File:** `src/lib.rs`
 **Severity:** Low
@@ -372,9 +372,10 @@ and "Multi-output model gaps".
 `doc/architecture.md` contains the most complete description of the pipeline, design
 principles, and constraint rules. Readers arriving at `docs.rs` have no path to it.
 
-**Action:** Add a module-level doc comment in `src/lib.rs` with a prose overview and a
-reference to the extended documentation, or use `#![doc = include_str!("../doc/architecture.md")]`
-(or a subset) to surface it directly.
+**Resolution:** Added `#![doc = include_str!("../doc/architecture.md")]` to `src/lib.rs`.
+The architecture document is now the crate-level rustdoc page on docs.rs, eliminating any
+risk of drift. All code blocks in the document are marked `no_run` (real compilable snippets
+with hidden imports) or `text` (schematic/pseudo-code); doctests pass cleanly.
 
 ---
 

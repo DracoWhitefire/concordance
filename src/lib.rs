@@ -1,3 +1,4 @@
+#![doc = include_str!("../doc/architecture.md")]
 //! HDMI 2.1 mode negotiation — policy layer of the display connection stack.
 //!
 //! Given sink, source, and cable capabilities (all caller-supplied), produce a ranked
