@@ -343,7 +343,7 @@ pixel_clock_khz)` remains the fallback.
 
 ---
 
-### A3 — `NegotiationPolicy` has no preferred refresh or resolution floor (compositor)
+### A3 — `NegotiationPolicy` has no preferred refresh or resolution floor (compositor) → partially resolved, remainder deferred to roadmap
 
 **File:** `src/ranker/policy.rs`
 **Severity:** Low
@@ -353,9 +353,12 @@ output needs to express "prefer 60 Hz on this output" or "exclude anything below
 policy inputs, without replacing the full ranker. Currently this requires a custom `ConfigRanker`
 implementation.
 
-**Action:** Add optional `preferred_refresh_hz` and `min_resolution_pixels` fields to
-`NegotiationPolicy`, or document the recommended pattern for compositors that need soft
-preferences (e.g., post-rank filter + `with_extra_rule` for hard filters).
+**Resolution:** Hard go/no-go filters (resolution floor, refresh ceiling, interlace exclusion,
+aspect ratio) are documented in `doc/architecture.md` as the intended `with_extra_rule` pattern,
+with concrete examples. Soft preferences (`preferred_refresh_hz`, resolution ceiling, soft color
+format preference, `prefer_vrr`) and the multi-output model gaps (clone/mirror, cross-output
+bandwidth, portrait/rotation) are tracked in `doc/roadmap.md` under "Compositor policy knobs"
+and "Multi-output model gaps".
 
 ---
 
