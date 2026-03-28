@@ -38,6 +38,49 @@ and pipeline invariants under adversarial input.
 Additional built-in `ConstraintRule` implementations covering edge cases currently left to
 callers: VRR range validation, Deep Color bandwidth margins, ALLM and QMS interaction checks.
 
+### Compositor policy knobs (A3)
+
+`NegotiationPolicy` currently exposes coarse flags (`prefer_high_refresh`,
+`prefer_color_fidelity`, etc.) that rank all valid configs globally. Compositors managing
+per-output policy need finer control without replacing the full ranker. Planned additions:
+
+- `preferred_refresh_hz: Option<u16>` — soft preference for a specific refresh rate; modes
+  closer to the target rank higher within the same resolution. Supports content-rate matching
+  (e.g. prefer integer multiples of 24 Hz for film playback).
+- `max_resolution_pixels: Option<u32>` — soft ceiling on total pixel count; modes above the
+  ceiling rank lower without being hard-rejected. Complements `with_extra_rule` for callers
+  who want a preference rather than a hard filter.
+- `exclude_interlaced: bool` — convenience flag to penalise or hard-reject interlaced modes,
+  which compositors universally avoid. Today this requires a custom `with_extra_rule`.
+- Soft color format preference — within a given resolution and refresh, prefer RGB over YCbCr
+  for compositing efficiency. Currently `allow_ycbcr` is a hard on/off; a soft signal is
+  more flexible when YCbCr is acceptable but not preferred.
+- `prefer_vrr: bool` — prefer VRR-applicable modes once VRR constraint checking lands (I1).
+
+Hard go/no-go filters (resolution floor, aspect ratio, refresh ceiling) are already
+expressible today via `with_extra_rule`; that pattern is documented in
+`doc/architecture.md`. The additions above cover the soft-preference cases where a rule
+would be too blunt.
+
+### Multi-output model gaps (A3)
+
+The current API is per-output: one `SinkCapabilities`, one negotiation result. Three
+compositor use cases require cross-output reasoning that the current model cannot express:
+
+- **Clone / mirror mode** — the compositor needs the intersection of two sinks' supported
+  modes to find configurations valid on both outputs simultaneously. There is no
+  multi-sink entry point.
+- **Cross-output bandwidth budget** — GPU memory bandwidth is shared across all active
+  outputs. A per-output negotiation cannot know what headroom the other outputs are
+  consuming.
+- **Portrait / rotation** — `VideoMode` and `NegotiationPolicy` carry no rotation
+  information. A rotated output's effective resolution (swapped width/height) is invisible
+  to the constraint engine.
+
+These are scope expansions rather than policy knob additions and are tracked separately.
+The right solution likely involves a multi-output negotiation entry point that receives all
+active sink/source/cable triples and returns a jointly valid configuration set.
+
 ### VRR constraint implementation (I1)
 
 `NegotiatedConfig.vrr_applicable` is always `false` today. Completing this requires
