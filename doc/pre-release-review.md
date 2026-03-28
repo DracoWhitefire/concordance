@@ -182,7 +182,7 @@ callers can extend, or document that quirks are a future internal mechanism only
 
 ---
 
-### E4 — `POWER_SAVING` policy has `prefer_native_resolution: true`
+### E4 — `POWER_SAVING` policy has `prefer_native_resolution: true` ✓ resolved
 
 **File:** `src/ranker/policy.rs:61-66`
 **Severity:** Low
@@ -191,7 +191,10 @@ The `POWER_SAVING` preset minimizes bandwidth but also prefers native resolution
 resolutions typically consume less bandwidth. The combination may be intentional ("minimize
 bandwidth within native res only") but it's not explained and reads as an oversight.
 
-**Action:** Add a comment on the preset explaining the intent, or reconsider the flag value.
+**Resolution:** Behavior is intentional — running non-native forces the display scaler on,
+consuming additional power and introducing scaling artifacts. Power savings come from reduced
+refresh rate and color depth, not resolution. Doc comment on `POWER_SAVING` updated to
+explain the rationale.
 
 ---
 
