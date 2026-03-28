@@ -299,7 +299,7 @@ resolution". The `dsc_required` field in `NegotiatedConfig` retains its current 
 
 ## Audience-specific gaps
 
-### A1 — No path from raw timing registers to `VideoMode` (firmware/embedded)
+### A1 — No path from raw timing registers to `VideoMode` (firmware/embedded) ✓ partially resolved
 
 **File:** `README.md`, `doc/architecture.md`
 **Severity:** Low
@@ -309,9 +309,15 @@ Firmware that reads timing registers rather than EDID has no documented path to 
 `VideoMode` from raw values (pixel clock, H/V active/blanking, sync polarity). The `VideoMode`
 type in `display-types` may not have a public constructor for this.
 
-**Action:** Document the intended construction path for firmware consumers who don't go through
-EDID parsing, even if the answer is "populate `VideoMode::new(width, height, refresh, interlace)`
-and accept estimate-based pixel clock checks."
+**Resolution:** Two paths documented in `README.md` and `doc/architecture.md`:
+
+- **Standard CTA modes** — `display_types::cea861::vic_to_mode(vic)` returns a `VideoMode`
+  with the exact pixel clock from the CEA-861 timing table. README example updated to show
+  this path. No API changes required.
+- **Custom / non-CTA timings** — `VideoMode::new(width, height, refresh_hz, interlace)` with
+  the caveat that pixel clock is CVT-RB estimated (may under-estimate ~10–15% for HDMI Forum
+  CTA modes). A `VideoMode::from_pixel_clock` constructor for exact-clock custom timings is
+  planned as an upstream `display-types` feature and tracked in `doc/roadmap.md`.
 
 ---
 

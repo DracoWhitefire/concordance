@@ -176,6 +176,33 @@ pub fn is_config_viable(
 The ranked iterator is built on top of this primitive. Firmware and embedded consumers that
 cannot afford allocation or iteration use this function directly.
 
+#### Constructing a `VideoMode` on firmware targets
+
+`is_config_viable` requires a `CandidateConfig` holding a `&VideoMode`. Firmware that does
+not go through EDID parsing has two construction paths:
+
+**Standard CTA modes (recommended)** — use `display_types::cea861::vic_to_mode`. Every
+standard HDMI mode has a Video Identification Code; `vic_to_mode` returns a `VideoMode` with
+the exact pixel clock from the CEA-861 timing table, so the pixel clock constraint checks are
+precise:
+
+```rust
+use display_types::cea861::vic_to_mode;
+
+// VIC 97 = 3840×2160 @ 60 Hz, 594 000 kHz
+let mode = vic_to_mode(97).expect("VIC 97 is in the table");
+```
+
+VIC numbers for common modes: 16 = 1080p@60, 31 = 1080p@50, 93 = 4K@24, 97 = 4K@60,
+107 = 4K@120 (via FRL). The full table is in `display-types/src/cea861/vic_table.rs`.
+
+**Non-CTA / custom timings** — use `VideoMode::new(width, height, refresh_hz, interlace)`.
+The pixel clock is then derived via CVT-RB estimation, which under-estimates for HDMI Forum
+CTA modes by roughly 10–15%. This is acceptable for custom timings where the estimate is
+the best available value, but callers should be aware that a mode close to a bandwidth ceiling
+may produce a false accept. A `VideoMode::from_pixel_clock` constructor that stores the exact
+clock is planned for a future `display-types` release.
+
 #### Rule injection
 
 `ConstraintEngine` enables full replacement of the constraint policy, but replacement

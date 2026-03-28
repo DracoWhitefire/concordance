@@ -24,10 +24,13 @@ For embedded and firmware targets, the constraint engine is also exposed as a st
 
 ```rust
 use concordance::{is_config_viable, SinkCapabilities, SourceCapabilities, CableCapabilities, CandidateConfig};
-use display_types::{ColorBitDepth, ColorFormat, VideoMode};
-use display_types::cea861::HdmiForumFrl;
+use display_types::{ColorBitDepth, ColorFormat};
+use display_types::cea861::{HdmiForumFrl, vic_to_mode};
 
-let mode = VideoMode::new(3840, 2160, 60, false);
+// For standard CTA modes, use vic_to_mode — it carries the exact pixel clock from
+// the CEA-861 timing table, so bandwidth ceiling checks are precise.
+// VIC 97 = 3840×2160 @ 60 Hz (594 MHz). Other common VICs: 16 = 1080p@60, 97 = 4K@60.
+let mode = vic_to_mode(97).unwrap();
 let config = CandidateConfig::new(
     &mode,
     ColorFormat::Rgb444,
