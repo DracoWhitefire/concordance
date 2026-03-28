@@ -1,0 +1,81 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+env:
+  CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  check-branch:
+    name: Check tag is on main
+    runs-on: ubuntu-latest
+    outputs:
+      on_main: ${{ steps.check.outputs.on_main }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check tag is on main
+        id: check
+        run: |
+          git fetch origin main
+          if git merge-base --is-ancestor ${{ github.sha }} origin/main; then
+            echo "on_main=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag is not on main — skipping publish."
+            echo "on_main=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    name: Publish to crates.io
+    needs: check-branch
+    if: needs.check-branch.outputs.on_main == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Format check
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Docs
+        run: cargo rustdoc -- -D missing_docs
+
+      - name: Test (std)
+        run: cargo test
+
+      - name: Test (std + serde)
+        run: cargo test --features serde
+
+      - name: Build (alloc only)
+        run: cargo build --no-default-features --features alloc
+
+      - name: Build (no_std)
+        run: cargo build --no-default-features
+
+      - name: Publish
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
