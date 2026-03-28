@@ -58,8 +58,8 @@ let configs = NegotiatorBuilder::default()
 
 for cfg in &configs {
     println!("{}×{}@{} {:?} {:?}",
-        cfg.mode.width, cfg.mode.height, cfg.mode.refresh_rate,
-        cfg.color_encoding, cfg.bit_depth);
+        cfg.resolved.mode.width, cfg.resolved.mode.height, cfg.resolved.mode.refresh_rate,
+        cfg.resolved.color_encoding, cfg.resolved.bit_depth);
 }
 ```
 

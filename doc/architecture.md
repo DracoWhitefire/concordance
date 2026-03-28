@@ -43,11 +43,8 @@ The following are out of scope:
 - `CableCapabilities` — a struct defined in this library, filled in by the caller
 
 **Output:** A ranked iterator of `NegotiatedConfig<W>`, each entry containing:
-- Resolved `VideoMode`
-- Color format and bit depth
-- FRL tier (or TMDS, if applicable)
-- DSC required flag
-- VRR applicability
+- `resolved: ResolvedDisplayConfig` — the hardware-ready output: `VideoMode`, color format
+  and bit depth, FRL tier (or TMDS), DSC required flag, VRR applicability
 - `Vec<W>` — non-fatal warnings about the accepted configuration
 - `ReasoningTrace`
 
@@ -217,69 +214,49 @@ case of adding rules on top of the default checks, a finer-grained unit of exten
 is provided:
 
 ```text
-pub trait ConstraintRule {
-    type Warning: Diagnostic;
-    type Violation: Diagnostic;
-
+pub trait ConstraintRule<V: Diagnostic> {
+    fn display_name(&self) -> &'static str;
     fn check(
         &self,
         sink: &SinkCapabilities,
         source: &SourceCapabilities,
         cable: &CableCapabilities,
-        config: &CandidateConfig,
-    ) -> CheckResult<Self::Warning, Self::Violation>;
+        config: &CandidateConfig<'_>,
+    ) -> Option<V>;
 }
 ```
 
-`ConstraintRule` is the unit of a single check. `ConstraintEngine::check` is identical in
-shape, so every engine is also a valid rule and the two compose cleanly.
+`ConstraintRule<V>` is the unit of a single check — it either finds a violation of type
+`V` or it doesn't. `ConstraintEngine` coordinates a full pass (collecting all violations,
+or short-circuiting on the first in no-alloc mode) and additionally supports warnings.
 
-A `Layered<Base, Extra>` combinator chains a base engine with an additional rule. Two
-composition strategies are supported:
-
-**Shared types (default path)** — the extra rule emits the same `Warning` and `Violation`
-types as the base engine. No conversion is required and the common case (adding rules on
-top of the built-in types) involves no boilerplate:
+A `Layered<E, R>` combinator extends a base engine with an additional rule, running both
+in sequence. The extra rule must produce the same violation type as the engine:
 
 ```text
-// Extra must share the base engine's associated types.
-impl<B, R> ConstraintEngine for Layered<B, R>
+impl<E, R> ConstraintEngine for Layered<E, R>
 where
-    B: ConstraintEngine,
-    R: ConstraintRule<Warning = B::Warning, Violation = B::Violation>,
+    E: ConstraintEngine,
+    R: ConstraintRule<E::Violation>,
 {
-    type Warning = B::Warning;
-    type Violation = B::Violation;
-    // ...
-}
-```
-
-**`From` bounds (escape hatch)** — when the extra rule emits distinct types, both are
-converted into a common output type via `From`. Full type fidelity is preserved; the
-caller names the output types explicitly:
-
-```text
-impl<B, R, W, V> ConstraintEngine for Layered<B, R>
-where
-    B: ConstraintEngine<Warning: Into<W>, Violation: Into<V>>,
-    R: ConstraintRule<Warning: Into<W>, Violation: Into<V>>,
-    W: Diagnostic,
-    V: Diagnostic,
-{
-    type Warning = W;
-    type Violation = V;
+    type Warning = E::Warning;
+    type Violation = E::Violation;
     // ...
 }
 ```
 
 `NegotiatorBuilder` exposes a composing entry point so a caller never needs to construct
-`Layered` directly:
+`Layered` directly. The builder wraps the supplied rule in a `TaggingAdapter` that
+automatically prefixes each violation with the rule's `display_name`, matching the tagging
+format of the built-in violations:
 
 ```text
 impl NegotiatorBuilder<E, En, R> {
-    pub fn with_extra_rule<Rule>(self, rule: Rule) -> NegotiatorBuilder<Layered<E, Rule>, En, R>
+    pub fn with_extra_rule<X, V>(self, rule: X) -> NegotiatorBuilder<Layered<E, TaggingAdapter<X>>, En, R>
     where
-        Rule: ConstraintRule<Warning = E::Warning, Violation = E::Violation>,
+        E: ConstraintEngine<Violation = TaggedViolation<V>>,
+        X: ConstraintRule<V>,
+        V: Diagnostic + 'static,
     { ... }
 }
 ```
@@ -446,7 +423,7 @@ higher-level policy evolves.
 
 ```text
 pub struct NegotiatedConfig<W = Warning> {
-    // resolved fields ...
+    pub resolved: ResolvedDisplayConfig,
     pub warnings: Vec<W>,
     pub trace: ReasoningTrace,
 }

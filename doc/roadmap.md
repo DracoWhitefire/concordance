@@ -38,7 +38,7 @@ and pipeline invariants under adversarial input.
 Additional built-in `ConstraintRule` implementations covering edge cases currently left to
 callers: VRR range validation, Deep Color bandwidth margins, ALLM and QMS interaction checks.
 
-### Compositor policy knobs (A3)
+### Compositor policy knobs
 
 `NegotiationPolicy` currently exposes coarse flags (`prefer_high_refresh`,
 `prefer_color_fidelity`, etc.) that rank all valid configs globally. Compositors managing
@@ -62,7 +62,7 @@ expressible today via `with_extra_rule`; that pattern is documented in
 `doc/architecture.md`. The additions above cover the soft-preference cases where a rule
 would be too blunt.
 
-### Multi-output model gaps (A3)
+### Multi-output model gaps
 
 The current API is per-output: one `SinkCapabilities`, one negotiation result. Three
 compositor use cases require cross-output reasoning that the current model cannot express:
@@ -81,14 +81,14 @@ These are scope expansions rather than policy knob additions and are tracked sep
 The right solution likely involves a multi-output negotiation entry point that receives all
 active sink/source/cable triples and returns a jointly valid configuration set.
 
-### VRR constraint implementation (I1)
+### VRR constraint implementation
 
-`NegotiatedConfig.vrr_applicable` is always `false` today. Completing this requires
+`NegotiatedConfig.resolved.vrr_applicable` is always `false` today. Completing this requires
 implementing VRR range validation (min/max refresh from the sink's VRR range descriptor) as a
 `ConstraintRule` and updating `vrr_applicable` in `DefaultRanker` to reflect the result. Until
 then the field's doc comment documents it as always-false.
 
-### DSC parameter resolution (I2)
+### DSC parameter resolution
 
 `DscCapabilities` captures `max_slices` and `max_bpp_x16` from the source, but neither is
 validated in `DscCheck` nor surfaced in output. Completing this requires validating slice count
