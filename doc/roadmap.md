@@ -37,3 +37,18 @@ and pipeline invariants under adversarial input.
 
 Additional built-in `ConstraintRule` implementations covering edge cases currently left to
 callers: VRR range validation, Deep Color bandwidth margins, ALLM and QMS interaction checks.
+
+### VRR constraint implementation (I1)
+
+`NegotiatedConfig.vrr_applicable` is always `false` today. Completing this requires
+implementing VRR range validation (min/max refresh from the sink's VRR range descriptor) as a
+`ConstraintRule` and updating `vrr_applicable` in `DefaultRanker` to reflect the result. Until
+then the field's doc comment documents it as always-false.
+
+### DSC parameter resolution (I2)
+
+`DscCapabilities` captures `max_slices` and `max_bpp_x16` from the source, but neither is
+validated in `DscCheck` nor surfaced in output. Completing this requires validating slice count
+and BPP against source and sink limits and adding a resolved `DscConfig` struct (or equivalent
+fields) to `NegotiatedConfig` so kernel drivers and firmware have actionable compression
+parameters to program the encoder.

@@ -35,6 +35,9 @@ pub struct NegotiatedConfig<W = Warning> {
     pub dsc_required: bool,
 
     /// Whether Variable Refresh Rate is applicable for this configuration.
+    ///
+    /// Always `false` in the current release. VRR range validation (min/max refresh
+    /// from the sink's VRR range descriptor) is not yet implemented. See the roadmap.
     pub vrr_applicable: bool,
 
     /// Non-fatal warnings about this accepted configuration.

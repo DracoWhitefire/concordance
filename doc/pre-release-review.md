@@ -263,7 +263,7 @@ and receive tagged output at the engine boundary without any extra ceremony.
 
 ## Incomplete features
 
-### I1 — `vrr_applicable` is set but VRR validation is not implemented
+### I1 — `vrr_applicable` is set but VRR validation is not implemented → deferred to roadmap
 
 **File:** `src/output/config.rs:38`
 **Severity:** Medium
@@ -272,13 +272,13 @@ and receive tagged output at the engine boundary without any extra ceremony.
 checking is a roadmap item. If the field is always `false` today, callers who read it will get
 incorrect results. If it is set to `true` optimistically, it overpromises.
 
-**Action:** Document the field's current semantics explicitly in the doc comment ("always
-`false` pending VRR constraint implementation") until the feature is complete. Alternatively,
-gate it behind a `#[doc(hidden)]` or a `cfg` until it's real.
+**Resolution:** Field doc comment updated to document the current always-`false` semantics
+explicitly ("always `false` pending VRR constraint implementation"). Full VRR range validation
+is tracked in `doc/roadmap.md` under "VRR constraint implementation".
 
 ---
 
-### I2 — `DscCheck` validates presence, not parameters
+### I2 — `DscCheck` validates presence, not parameters → deferred to roadmap
 
 **File:** `src/engine/checks/dsc.rs`, `src/types/source.rs:17-28`, `src/output/config.rs`
 **Severity:** Medium
@@ -289,9 +289,9 @@ enabling DSC needs a compression parameter set (slice count, BPP target) to prog
 encoder. The current output acknowledges `dsc_required: true` but provides no actionable
 parameters.
 
-**Action:** Add resolved DSC parameters to `NegotiatedConfig` (or a nested `DscConfig` struct)
-and validate slice count and BPP against source and sink limits in `DscCheck`. Track in the
-roadmap if not addressing in 0.1.x.
+**Resolution:** Deferred to post-0.1.x. Tracked in `doc/roadmap.md` under "DSC parameter
+resolution". The `dsc_required` field in `NegotiatedConfig` retains its current semantics
+(boolean presence check) until the full implementation lands.
 
 ---
 
