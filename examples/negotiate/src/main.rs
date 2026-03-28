@@ -135,11 +135,11 @@ fn main() {
                     println!(
                         "  {:<4} {:<20} {:<6} {:<14} {:<10} {:<5}",
                         rank + 1,
-                        format!("{}x{}", cfg.mode.width, cfg.mode.height),
-                        cfg.mode.refresh_rate,
-                        format!("{:?}", cfg.color_encoding),
-                        format!("{:?}", cfg.bit_depth),
-                        if cfg.dsc_required { "yes" } else { "no" },
+                        format!("{}x{}", cfg.resolved.mode.width, cfg.resolved.mode.height),
+                        cfg.resolved.mode.refresh_rate,
+                        format!("{:?}", cfg.resolved.color_encoding),
+                        format!("{:?}", cfg.resolved.bit_depth),
+                        if cfg.resolved.dsc_required { "yes" } else { "no" },
                     );
                     for w in &cfg.warnings {
                         println!("       warning: {w}");

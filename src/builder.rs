@@ -2,6 +2,8 @@
 
 use alloc::vec::Vec;
 
+use display_types::ResolvedDisplayConfig;
+
 use crate::engine::rule::{ConstraintRule, Layered, TaggingAdapter};
 use crate::engine::{ConstraintEngine, DefaultConstraintEngine};
 use crate::enumerator::{CandidateEnumerator, DefaultEnumerator};
@@ -176,24 +178,20 @@ where
             match self.engine.check(sink, source, cable, &config) {
                 Ok(warnings) => {
                     let negotiated = NegotiatedConfig {
-                        mode: config.mode.clone(),
-                        color_encoding: config.color_encoding,
-                        bit_depth: config.bit_depth,
-                        frl_rate: config.frl_rate,
-                        dsc_required: config.dsc_enabled,
-                        vrr_applicable: false,
+                        resolved: ResolvedDisplayConfig::new(
+                            config.mode.clone(),
+                            config.color_encoding,
+                            config.bit_depth,
+                            config.frl_rate,
+                            config.dsc_enabled,
+                            false,
+                        ),
                         warnings,
                         trace: ReasoningTrace::new(),
                     };
 
                     // O(n²) dedup — candidate lists are small enough that this is acceptable.
-                    let is_dup = accepted.iter().any(|c| {
-                        c.mode == negotiated.mode
-                            && c.color_encoding == negotiated.color_encoding
-                            && c.bit_depth == negotiated.bit_depth
-                            && c.frl_rate == negotiated.frl_rate
-                            && c.dsc_required == negotiated.dsc_required
-                    });
+                    let is_dup = accepted.iter().any(|c| c.resolved == negotiated.resolved);
                     if !is_dup {
                         accepted.push(negotiated);
                     }
@@ -328,7 +326,7 @@ mod tests {
             .negotiate(&sink, &source, &cable);
 
         assert_eq!(configs.len(), 1);
-        assert_eq!(configs[0].mode.width, 1920);
+        assert_eq!(configs[0].resolved.mode.width, 1920);
     }
 
     /// `with_engine` replaces the constraint check; an accept-all engine admits a
@@ -397,10 +395,10 @@ mod tests {
 
         assert_eq!(configs.len(), 2);
         assert_eq!(
-            configs[0].mode.width, 1920,
+            configs[0].resolved.mode.width, 1920,
             "ReverseRanker must put 1080p first"
         );
-        assert_eq!(configs[1].mode.width, 3840);
+        assert_eq!(configs[1].resolved.mode.width, 3840);
     }
 
     /// `with_extra_rule` appends a constraint on top of the default engine;

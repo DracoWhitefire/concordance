@@ -108,16 +108,16 @@ fn single_tmds_mode_accepted() {
     assert_eq!(configs.len(), 1, "exactly one config expected");
     let cfg = &configs[0];
     assert_eq!(
-        (cfg.mode.width, cfg.mode.height, cfg.mode.refresh_rate),
+        (cfg.resolved.mode.width, cfg.resolved.mode.height, cfg.resolved.mode.refresh_rate),
         (1920, 1080, 60)
     );
-    assert_eq!(cfg.color_encoding, ColorFormat::Rgb444);
+    assert_eq!(cfg.resolved.color_encoding, ColorFormat::Rgb444);
     assert_eq!(
-        cfg.frl_rate,
+        cfg.resolved.frl_rate,
         HdmiForumFrl::NotSupported,
         "expected TMDS transport"
     );
-    assert!(!cfg.dsc_required);
+    assert!(!cfg.resolved.dsc_required);
 }
 
 /// When the source TMDS clock ceiling is below the pixel clock of every mode,
@@ -162,17 +162,17 @@ fn full_hdmi21_native_resolution_ranks_first() {
 
     assert!(!configs.is_empty(), "expected at least one accepted config");
     assert_eq!(
-        configs[0].mode.width, 3840,
+        configs[0].resolved.mode.width, 3840,
         "BEST_QUALITY policy must place native (4K) resolution first"
     );
-    assert_eq!(configs[0].mode.height, 2160);
+    assert_eq!(configs[0].resolved.mode.height, 2160);
     // Only RGB was declared in color_capabilities.
     for cfg in &configs {
         assert_eq!(
-            cfg.color_encoding,
+            cfg.resolved.color_encoding,
             ColorFormat::Rgb444,
             "unexpected encoding {:?}",
-            cfg.color_encoding,
+            cfg.resolved.color_encoding,
         );
     }
 }
@@ -195,9 +195,9 @@ fn cable_frl_ceiling_is_binding_constraint() {
     assert!(!configs.is_empty());
     for cfg in &configs {
         assert!(
-            cfg.frl_rate <= HdmiForumFrl::Rate6Gbps4Lanes,
+            cfg.resolved.frl_rate <= HdmiForumFrl::Rate6Gbps4Lanes,
             "FRL rate {:?} exceeds the cable ceiling Rate6Gbps4Lanes",
-            cfg.frl_rate,
+            cfg.resolved.frl_rate,
         );
     }
 }
@@ -224,9 +224,9 @@ fn performance_policy_ranks_high_refresh_first() {
 
     assert!(!configs.is_empty());
     assert_eq!(
-        configs[0].mode.refresh_rate, 144,
+        configs[0].resolved.mode.refresh_rate, 144,
         "BEST_PERFORMANCE should rank 144 Hz before 60 Hz, got {} Hz first",
-        configs[0].mode.refresh_rate,
+        configs[0].resolved.mode.refresh_rate,
     );
 }
 
@@ -252,10 +252,10 @@ fn best_quality_prefers_higher_bit_depth() {
 
     assert!(!configs.is_empty());
     assert_eq!(
-        configs[0].bit_depth,
+        configs[0].resolved.bit_depth,
         ColorBitDepth::Depth12,
         "BEST_QUALITY should rank 12 bpc first, got {:?}",
-        configs[0].bit_depth,
+        configs[0].resolved.bit_depth,
     );
 }
 
@@ -278,9 +278,9 @@ fn best_quality_prefers_rgb_over_ycbcr444_at_same_depth() {
 
     assert!(!configs.is_empty());
     assert_eq!(
-        configs[0].color_encoding,
+        configs[0].resolved.color_encoding,
         ColorFormat::Rgb444,
         "BEST_QUALITY should prefer RGB over YCbCr 4:4:4; got {:?}",
-        configs[0].color_encoding,
+        configs[0].resolved.color_encoding,
     );
 }
