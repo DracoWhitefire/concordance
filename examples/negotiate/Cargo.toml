@@ -15,4 +15,4 @@ path = "../../../piaf"
 features = ["std"]
 
 [dependencies.display-types]
-path = "../../../display-types"
+version = "0.3"
