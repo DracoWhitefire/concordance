@@ -1,4 +1,4 @@
-# Concordance — Design Document
+# Architecture
 
 ## Role
 
@@ -10,6 +10,31 @@ Concordance is the policy layer of the stack. Parsing layers below it make no ju
 Hardware layers above it implement specification. Concordance is explicitly opinionated, but
 its opinions are configurable and its reasoning is always visible.
 
+## Scope
+
+Concordance covers:
+
+- validation of candidate configurations against HDMI 2.1 specification constraints,
+- enumeration of all candidate configurations from the intersection of sink, source, and cable
+  capabilities,
+- ranking of accepted candidates according to a configurable policy,
+- a `no_std`-compatible single-config probe (`is_config_viable`) for firmware and embedded targets,
+- structured diagnostics: violations for rejected configurations; warnings for accepted
+  configurations with caveats.
+
+The following are out of scope:
+
+- **Sink capability discovery** — parsing EDID and HF-VSDB into `SinkCapabilities` belongs in
+  the parsing layer (e.g. `piaf`). The integration layer converts parsed output into this
+  library's `SinkCapabilities` struct.
+- **Source capability discovery** — querying DRM/KMS or VBIOS for actual GPU limits belongs in
+  the integration layer.
+- **Cable capability discovery** — reading the HDMI cable type marker or accepting a user-supplied
+  override belongs in the integration layer.
+- **Link training** — determining whether a negotiated FRL tier is achievable on real hardware.
+- **InfoFrame encoding** — signaling the negotiated configuration to the sink.
+- **HDCP** — out of scope for the entire stack.
+
 ## Inputs and Output
 
 **Inputs:**
@@ -18,11 +43,8 @@ its opinions are configurable and its reasoning is always visible.
 - `CableCapabilities` — a struct defined in this library, filled in by the caller
 
 **Output:** A ranked iterator of `NegotiatedConfig<W>`, each entry containing:
-- Resolved `VideoMode`
-- Color format and bit depth
-- FRL tier (or TMDS, if applicable)
-- DSC required flag
-- VRR applicability
+- `resolved: ResolvedDisplayConfig` — the hardware-ready output: `VideoMode`, color format
+  and bit depth, FRL tier (or TMDS), DSC required flag, VRR applicability
 - `Vec<W>` — non-fatal warnings about the accepted configuration
 - `ReasoningTrace`
 
@@ -32,7 +54,7 @@ its opinions are configurable and its reasoning is always visible.
 parsed `DisplayCapabilities` (from `display-types`) is the concern of the integration layer,
 not this library.
 
-```rust
+```text
 #[non_exhaustive]
 pub struct SinkCapabilities {
     // Video modes declared by the display
@@ -71,7 +93,7 @@ it validates a caller-supplied candidate rather than enumerating one.
 actual GPU hardware is the concern of the source capability discovery library in the
 integration layer, not this library.
 
-```rust
+```text
 #[non_exhaustive]
 pub struct SourceCapabilities {
     pub max_tmds_clock: u32,
@@ -94,7 +116,7 @@ limits and may include vendor quirks.
 actual cable identification (e.g. HDMI cable type marker read from the sink EDID, or
 user-supplied override) is the concern of the integration layer, not this library.
 
-```rust
+```text
 #[non_exhaustive]
 pub struct CableCapabilities {
     pub hdmi_spec: HdmiSpec,         // e.g. Hdmi14, Hdmi20, Hdmi21
@@ -119,7 +141,7 @@ default implementation. Callers can substitute any component without forking the
 The constraint engine additionally supports rule injection — adding checks on top of the
 default implementation — via a `ConstraintRule` trait and a `Layered` combinator.
 
-```rust
+```text
 pub trait ConstraintEngine { ... }
 pub trait CandidateEnumerator { ... }
 pub trait ConfigRanker { ... }
@@ -139,7 +161,7 @@ without touching the rest of the pipeline.
 
 This is also exposed directly as the `no_std`-compatible binary probe:
 
-```rust
+```text
 pub fn is_config_viable(
     sink: &SinkCapabilities,
     source: &SourceCapabilities,
@@ -151,6 +173,39 @@ pub fn is_config_viable(
 The ranked iterator is built on top of this primitive. Firmware and embedded consumers that
 cannot afford allocation or iteration use this function directly.
 
+#### Constructing a `VideoMode` on firmware targets
+
+`is_config_viable` requires a `CandidateConfig` holding a `&VideoMode`. Firmware that does
+not go through EDID parsing has two construction paths:
+
+**Standard CTA modes (recommended)** — use `display_types::cea861::vic_to_mode`. Every
+standard HDMI mode has a Video Identification Code; `vic_to_mode` returns a `VideoMode` with
+the exact pixel clock from the CEA-861 timing table, so the pixel clock constraint checks are
+precise:
+
+```rust,no_run
+# use display_types::cea861::vic_to_mode;
+// VIC 97 = 3840×2160 @ 60 Hz, 594 000 kHz
+let mode = vic_to_mode(97).expect("VIC 97 is in the table");
+```
+
+VIC numbers for common modes: 16 = 1080p@60, 31 = 1080p@50, 93 = 4K@24, 97 = 4K@60,
+107 = 4K@120 (via FRL). The full table is in `display-types/src/cea861/vic_table.rs`.
+
+**Non-CTA / custom timings** — use `VideoMode::new` followed by `.with_pixel_clock` if the
+exact clock is known:
+
+```rust,no_run
+# use display_types::VideoMode;
+// Custom panel: supply the exact pixel clock from the PLL or hardware register.
+let mode = VideoMode::new(1920, 1200, 60, false).with_pixel_clock(154_000);
+```
+
+Without `.with_pixel_clock`, the pixel clock is derived via CVT-RB estimation, which
+under-estimates for HDMI Forum CTA modes by roughly 10–15% and can produce false accepts in
+bandwidth ceiling checks. For custom timings where the exact clock is unavailable, the estimate
+is the best option — just note the caveat for modes near a bandwidth ceiling.
+
 #### Rule injection
 
 `ConstraintEngine` enables full replacement of the constraint policy, but replacement
@@ -158,77 +213,68 @@ requires reimplementing all HDMI specification rules — forking in disguise. Fo
 case of adding rules on top of the default checks, a finer-grained unit of extensibility
 is provided:
 
-```rust
-pub trait ConstraintRule {
-    type Warning: Diagnostic;
-    type Violation: Diagnostic;
-
+```text
+pub trait ConstraintRule<V: Diagnostic> {
+    fn display_name(&self) -> &'static str;
     fn check(
         &self,
         sink: &SinkCapabilities,
         source: &SourceCapabilities,
         cable: &CableCapabilities,
-        config: &CandidateConfig,
-    ) -> CheckResult<Self::Warning, Self::Violation>;
+        config: &CandidateConfig<'_>,
+    ) -> Option<V>;
 }
 ```
 
-`ConstraintRule` is the unit of a single check. `ConstraintEngine::check` is identical in
-shape, so every engine is also a valid rule and the two compose cleanly.
+`ConstraintRule<V>` is the unit of a single check — it either finds a violation of type
+`V` or it doesn't. `ConstraintEngine` coordinates a full pass (collecting all violations,
+or short-circuiting on the first in no-alloc mode) and additionally supports warnings.
 
-A `Layered<Base, Extra>` combinator chains a base engine with an additional rule. Two
-composition strategies are supported:
+A `Layered<E, R>` combinator extends a base engine with an additional rule, running both
+in sequence. The extra rule must produce the same violation type as the engine:
 
-**Shared types (default path)** — the extra rule emits the same `Warning` and `Violation`
-types as the base engine. No conversion is required and the common case (adding rules on
-top of the built-in types) involves no boilerplate:
-
-```rust
-// Extra must share the base engine's associated types.
-impl<B, R> ConstraintEngine for Layered<B, R>
+```text
+impl<E, R> ConstraintEngine for Layered<E, R>
 where
-    B: ConstraintEngine,
-    R: ConstraintRule<Warning = B::Warning, Violation = B::Violation>,
+    E: ConstraintEngine,
+    R: ConstraintRule<E::Violation>,
 {
-    type Warning = B::Warning;
-    type Violation = B::Violation;
-    // ...
-}
-```
-
-**`From` bounds (escape hatch)** — when the extra rule emits distinct types, both are
-converted into a common output type via `From`. Full type fidelity is preserved; the
-caller names the output types explicitly:
-
-```rust
-impl<B, R, W, V> ConstraintEngine for Layered<B, R>
-where
-    B: ConstraintEngine<Warning: Into<W>, Violation: Into<V>>,
-    R: ConstraintRule<Warning: Into<W>, Violation: Into<V>>,
-    W: Diagnostic,
-    V: Diagnostic,
-{
-    type Warning = W;
-    type Violation = V;
+    type Warning = E::Warning;
+    type Violation = E::Violation;
     // ...
 }
 ```
 
 `NegotiatorBuilder` exposes a composing entry point so a caller never needs to construct
-`Layered` directly:
+`Layered` directly. The builder wraps the supplied rule in a `TaggingAdapter` that
+automatically prefixes each violation with the rule's `display_name`, matching the tagging
+format of the built-in violations:
 
-```rust
+```text
 impl NegotiatorBuilder<E, En, R> {
-    pub fn with_extra_rule<Rule>(self, rule: Rule) -> NegotiatorBuilder<Layered<E, Rule>, En, R>
+    pub fn with_extra_rule<X, V>(self, rule: X) -> NegotiatorBuilder<Layered<E, TaggingAdapter<X>>, En, R>
     where
-        Rule: ConstraintRule<Warning = E::Warning, Violation = E::Violation>,
+        E: ConstraintEngine<Violation = TaggedViolation<V>>,
+        X: ConstraintRule<V>,
+        V: Diagnostic + 'static,
     { ... }
 }
 ```
 
 A platform-specific caller writes only their rule and passes it in:
 
-```rust
+```rust,no_run
+# use concordance::{NegotiatorBuilder, CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities, Violation};
+# use concordance::engine::rule::ConstraintRule;
+# struct PlatformBandwidthRule { max_khz: u32 }
+# impl PlatformBandwidthRule { fn new(max_khz: u32) -> Self { Self { max_khz } } }
+# impl ConstraintRule<Violation> for PlatformBandwidthRule {
+#     fn display_name(&self) -> &'static str { "platform_bandwidth" }
+#     fn check(&self, _: &SinkCapabilities, _: &SourceCapabilities,
+#              _: &CableCapabilities, _: &CandidateConfig<'_>) -> Option<Violation> { None }
+# }
+# let (sink, source, cable) = (SinkCapabilities::default(), SourceCapabilities::default(), CableCapabilities::default());
+# let limits = 594_000u32;
 let configs = NegotiatorBuilder::default()
     .with_extra_rule(PlatformBandwidthRule::new(limits))
     .negotiate(&sink, &source, &cable);
@@ -238,6 +284,49 @@ let configs = NegotiatorBuilder::default()
 internally, so advanced callers who need selective control — including or excluding
 specific built-in checks — can compose their own engine from individual rules without
 reimplementing any specification logic.
+
+#### Hard filters for compositor and driver callers
+
+`with_extra_rule` is the right mechanism for any go/no-go constraint that does not belong
+in the HDMI specification rule set — resolution floors, refresh rate ceilings, aspect ratio
+enforcement, or platform-specific bandwidth caps. A rule that returns `Some(violation)` for
+every candidate outside an acceptable range will exclude those candidates from the ranked
+output cleanly, without touching the ranker or the policy.
+
+Examples:
+
+```text
+// Exclude all modes below 1080p total pixels.
+struct MinResolutionRule { min_pixels: u32 }
+
+impl ConstraintRule<MyViolation> for MinResolutionRule {
+    fn display_name(&self) -> &'static str { "min_resolution" }
+    fn check(&self, ..., config: &CandidateConfig<'_>) -> Option<MyViolation> {
+        let pixels = config.mode.width as u32 * config.mode.height as u32;
+        if pixels < self.min_pixels { Some(MyViolation::ResolutionBelowMinimum) } else { None }
+    }
+}
+
+// Exclude interlaced modes entirely.
+struct NoInterlacedRule;
+
+impl ConstraintRule<MyViolation> for NoInterlacedRule {
+    fn display_name(&self) -> &'static str { "no_interlaced" }
+    fn check(&self, ..., config: &CandidateConfig<'_>) -> Option<MyViolation> {
+        if config.mode.interlaced { Some(MyViolation::InterlacedNotPermitted) } else { None }
+    }
+}
+
+let configs = NegotiatorBuilder::default()
+    .with_extra_rule(MinResolutionRule { min_pixels: 1920 * 1080 })
+    .with_extra_rule(NoInterlacedRule)
+    .negotiate(&sink, &source, &cable);
+```
+
+Soft preferences — preferring a specific refresh rate, or ranking RGB above YCbCr within the
+same resolution — belong in the `NegotiationPolicy` or a custom `ConfigRanker`, not in
+constraint rules. The distinction: a constraint rule eliminates candidates; a ranker orders
+those that remain.
 
 ### 2. Enumerator
 
@@ -252,6 +341,9 @@ deduplicated by the pipeline before ranking.
 Custom enumerators can restrict or expand the candidate set (e.g. to limit enumeration to a
 specific resolution list on embedded targets) without altering constraint or ranking logic.
 
+See [`doc/enumerator.md`](enumerator.md) for a detailed description of the Cartesian product
+dimensions, pre-filtering optimisation, and iterator implementation.
+
 ### 3. Ranker
 
 Orders the validated candidates according to a `NegotiationPolicy`. The default policy
@@ -262,6 +354,64 @@ Named policy presets (`BestQuality`, `BestPerformance`, `PowerSaving`) are a thi
 top of the same ranked iterator. Custom `NegotiationPolicy` implementations can encode
 platform-specific priorities (e.g. always prefer a specific refresh rate, or penalize DSC).
 
+#### Default ranking algorithm
+
+`DefaultRanker` implements a stable multi-criterion sort. The comparison function applies
+criteria in priority order; the first non-equal result determines the relative order of two
+configs. Higher-ranked configs appear earlier in the output.
+
+**Native resolution detection.** The `rank` signature does not receive capabilities, so
+native resolution is inferred from the accepted set: the mode with the greatest pixel area
+(`width × height`) is treated as the native resolution. This is the correct heuristic —
+the display's native resolution is its highest declared mode, and any such mode in the
+accepted set has already passed the constraint engine.
+
+**Sort criteria, in order:**
+
+| # | Criterion                     | Direction         | Controlled by                                  |
+|---|-------------------------------|-------------------|------------------------------------------------|
+| 1 | DSC required                  | `false` first     | `penalize_dsc`                                 |
+| 2 | Native resolution             | native first      | `prefer_native_resolution`                     |
+| 3 | Quality/performance dimension | see below         | `prefer_color_fidelity`, `prefer_high_refresh` |
+| 4 | Interlaced                    | progressive first | always                                         |
+| 5 | FRL rate                      | lower first       | always                                         |
+| 6 | Resolution area               | larger first      | always (tiebreaker)                            |
+
+**Quality/performance dimension (criterion 3).** The two policy flags jointly determine
+which sub-criteria are applied and in what order:
+
+- `prefer_color_fidelity = true` — bit depth (desc), color format quality (desc), refresh
+  rate (desc). Color fidelity is the primary driver; refresh rate breaks ties within the
+  same quality level.
+- `prefer_high_refresh = true`, `prefer_color_fidelity = false` — refresh rate (desc), bit
+  depth (desc), color format quality (desc). Refresh rate is the primary driver.
+- Both false (power saving) — refresh rate (asc), bit depth (asc), color format quality
+  (asc, simpler first). Lower bandwidth and lower power draw are preferred; the direction
+  of all three sub-criteria is reversed.
+
+**Color format quality.** Ranked 3 → 0: `Rgb444` (3), `YCbCr444` (2), `YCbCr422` (1),
+`YCbCr420` (0). RGB ranks above YCbCr444 at the same chroma resolution because it requires
+no color-space conversion at the sink. In power-saving mode the order is reversed:
+`YCbCr420` is preferred because it carries the least chroma data.
+
+**DSC penalty.** DSC is "visually lossless" compression but is still lossy: the sink
+reconstructs rather than preserves original pixel data. An uncompressed transport at the
+same resolution, format, and depth is strictly preferable. The penalty pushes DSC configs
+behind their uncompressed equivalents so they act as fallbacks, not first choices.
+`BEST_PERFORMANCE` disables the penalty: a high-refresh DSC mode may legitimately rank
+above a lower-refresh uncompressed one when performance is the goal.
+
+**FRL rate tiebreaker.** When two configs are otherwise equal, the one using the lower FRL
+rate is ranked first. A lower FRL rate achieves the same result at reduced link complexity
+and power; there is no reason to prefer a higher tier when a lower one suffices.
+
+**ReasoningTrace.** After sorting, `DefaultRanker` appends a `PreferenceApplied` step to
+each config describing the criteria that apply to that specific config (e.g.
+`"DSC penalized"`, `"native resolution preferred"`, `"progressive mode preferred"`). These
+are per-config facts, not relative comparisons — they give a diagnostic tool enough context
+to explain why a config has the characteristics it does without requiring knowledge of the
+full ranked list.
+
 ## NegotiatedConfig and ReasoningTrace
 
 `NegotiatedConfig` is a pure data struct — it holds resolved values. Helpers that compute
@@ -271,9 +421,9 @@ higher-level policy evolves.
 
 `NegotiatedConfig` is generic over the warning type, defaulting to the built-in `Warning`:
 
-```rust
+```text
 pub struct NegotiatedConfig<W = Warning> {
-    // resolved fields ...
+    pub resolved: ResolvedDisplayConfig,
     pub warnings: Vec<W>,
     pub trace: ReasoningTrace,
 }
@@ -319,7 +469,7 @@ Fatal errors (invalid inputs, internal invariant violations) are represented as 
 `Violation`, used in `is_config_viable`, is a `thiserror` error type with an associated
 type on `ConstraintEngine`:
 
-```rust
+```text
 pub trait ConstraintEngine {
     type Warning: Diagnostic;
     type Violation: Diagnostic;
@@ -351,7 +501,7 @@ rather than refusing to negotiate. Callers decide how strict to be.
 
 HDMI link capability is determined by:
 
-```
+```text
 Source + Sink + Cable → Link Training → Actual Limits
 ```
 
@@ -400,69 +550,3 @@ the previous optimistic behavior.
 - **Serde on all public types** — every public type derives `Serialize`/`Deserialize` behind
   a `serde` feature flag, covering inputs, outputs, and policy types. Enables diagnostic
   tooling, config persistence, and test fixtures without making serde a required dependency.
-
-## Testing
-
-Negotiation logic benefits from a testing approach that combines small deterministic tests
-with larger corpus-based validation.
-
-### Unit tests
-
-Unit tests cover narrow pieces of logic and live next to the code they test. Constraint
-engine tests call `check` directly on handcrafted capability structs without going through
-the full pipeline. Enumerator tests assert on the candidate set produced from a given
-capability triple. This keeps failures localized: a failing test in the engine can only
-mean the engine is broken.
-
-### Integration tests
-
-A single integration test verifies that `NegotiatorBuilder::default()` wires the pipeline
-correctly and that `negotiate` invokes all three components. It does not duplicate the
-field-level assertions that belong in component unit tests.
-
-### Fixture tests
-
-Concordance should maintain a fixture corpus containing:
-
-- valid capability triples from real hardware,
-- capability declarations with known inconsistencies,
-- edge cases (TMDS-only cable, DSC required, VRR boundary conditions),
-- pathological inputs.
-
-A suggested layout:
-```text
-testdata/
- ├── valid/
- ├── invalid/
- └── edge/
-```
-
-Fixtures serve as a regression suite and a confidence base for refactoring negotiation logic
-without unintentionally changing behaviour.
-
-### Fuzzing
-
-Fuzzing is strongly recommended for the constraint engine and enumerator.
-
-Important expectations:
-
-- no panics,
-- no uncontrolled memory growth,
-- any input produces controlled output (violations, warnings) rather than undefined behaviour,
-- unknown or conflicting capability values do not break pipeline invariants.
-
-## Out of Scope
-
-- **Sink capability discovery** — parsing EDID and HF-VSDB into `SinkCapabilities` belongs
-  in the parsing layer (e.g. `piaf`). The integration layer converts parsed output into this
-  library's `SinkCapabilities` struct. Concordance consumes it; it does not produce it.
-- **Source capability discovery** — querying DRM/KMS or VBIOS for actual GPU limits belongs
-  in the integration layer. Concordance consumes `SourceCapabilities`; it does not produce it.
-- **Cable capability discovery** — reading the HDMI cable type marker from the sink EDID or
-  accepting a user-supplied override belongs in the integration layer. Concordance consumes
-  `CableCapabilities`; it does not produce it.
-- **Link training** — determining whether a negotiated FRL tier is achievable on real
-  hardware is the concern of the SCDC/link training layer.
-- **InfoFrame encoding** — signaling the negotiated configuration to the sink is handled by
-  the InfoFrame library.
-- **HDCP** — out of scope for the entire stack.

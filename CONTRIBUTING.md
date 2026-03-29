@@ -4,7 +4,13 @@ Thanks for your interest in contributing. This document covers the basics.
 
 ## Getting started
 
-See [`doc/setup.md`](doc/setup.md) for build and test instructions.
+Relevant docs for contributors:
+
+- [`doc/setup.md`](doc/setup.md) — build, test, and coverage commands
+- [`doc/testing.md`](doc/testing.md) — testing strategy, fixture corpus, and CI expectations
+- [`doc/architecture.md`](doc/architecture.md) — pipeline structure, constraint rules, and design principles
+- [`doc/enumerator.md`](doc/enumerator.md) — candidate enumeration and iteration order
+- [`doc/roadmap.md`](doc/roadmap.md) — planned features and known gaps
 
 ## Issues and pull requests
 

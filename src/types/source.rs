@@ -3,14 +3,26 @@
 use display_types::cea861::HdmiForumFrl;
 
 bitflags::bitflags! {
-    /// Vendor-specific quirk flags for the source.
+    /// Source quirk flags that relax specific constraint checks.
     ///
-    /// Used to override or relax constraint checks where real hardware diverges
-    /// from the specification.
+    /// Flags are defined by concordance and correspond to known cases where a
+    /// source or its driver diverges from the HDMI specification in a predictable
+    /// way. Pass `QuirkFlags::empty()` (the default) when no quirks apply.
+    ///
+    /// Callers cannot define their own bits; use
+    /// [`NegotiatorBuilder::with_extra_rule`][crate::NegotiatorBuilder::with_extra_rule]
+    /// to express constraints that fall outside the built-in rule set.
     #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
     pub struct QuirkFlags: u32 {
-        // Reserved for platform-specific flags.
+        /// Ignore the sink's declared vertical refresh rate range.
+        ///
+        /// Some TVs and variable-rate panels declare a narrow `min_v_rate`/`max_v_rate`
+        /// window in their EDID range limits descriptor that does not reflect their true
+        /// operating range. Setting this flag suppresses
+        /// [`Violation::RefreshRateOutOfRange`][crate::output::warning::Violation::RefreshRateOutOfRange]
+        /// so that modes outside the declared range are still considered.
+        const IGNORE_REFRESH_RATE_RANGE = 1 << 0;
     }
 }
 
@@ -60,5 +72,38 @@ impl Default for SourceCapabilities {
             dsc: None,
             quirks: QuirkFlags::empty(),
         }
+    }
+}
+
+impl SourceCapabilities {
+    /// Constructs a `SourceCapabilities` with explicit values and no quirks.
+    ///
+    /// Pass `max_tmds_clock: 0` to indicate no TMDS limit (the source is unconstrained
+    /// or operates exclusively over FRL). Pass `dsc: None` for sources without DSC.
+    pub const fn new(
+        max_tmds_clock: u32,
+        max_frl_rate: HdmiForumFrl,
+        dsc: Option<DscCapabilities>,
+    ) -> Self {
+        Self {
+            max_tmds_clock,
+            max_frl_rate,
+            dsc,
+            quirks: QuirkFlags::empty(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_sets_fields_and_clears_quirks() {
+        let src = SourceCapabilities::new(600_000, HdmiForumFrl::Rate12Gbps4Lanes, None);
+        assert_eq!(src.max_tmds_clock, 600_000);
+        assert_eq!(src.max_frl_rate, HdmiForumFrl::Rate12Gbps4Lanes);
+        assert!(src.dsc.is_none());
+        assert_eq!(src.quirks, QuirkFlags::empty());
     }
 }

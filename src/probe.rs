@@ -2,7 +2,7 @@
 
 use crate::engine::ConstraintEngine;
 use crate::engine::DefaultConstraintEngine;
-use crate::output::warning::{Violation, Warning};
+use crate::output::warning::{TaggedViolation, Violation, Warning};
 use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
 
 /// Determines whether a specific configuration is viable for the given capabilities.
@@ -25,17 +25,17 @@ pub fn is_config_viable(
     source: &SourceCapabilities,
     cable: &CableCapabilities,
     config: &CandidateConfig<'_>,
-) -> crate::engine::CheckResult<Warning, Violation> {
+) -> crate::engine::CheckResult<Warning, TaggedViolation<Violation>> {
     DefaultConstraintEngine::default().check(sink, source, cable, config)
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(feature = "alloc", feature = "std")))]
 mod tests {
     use super::*;
     use display_types::cea861::HdmiForumFrl;
     use display_types::{ColorBitDepth, ColorBitDepths, ColorCapabilities, ColorFormat, VideoMode};
 
-    fn mode(refresh_rate: u8) -> VideoMode {
+    fn mode(refresh_rate: u16) -> VideoMode {
         VideoMode::new(1920, 1080, refresh_rate, false)
     }
 
@@ -73,7 +73,7 @@ mod tests {
         mode: &VideoMode,
         encoding: ColorFormat,
         depth: ColorBitDepth,
-    ) -> Result<(), alloc::vec::Vec<Violation>> {
+    ) -> Result<(), alloc::vec::Vec<TaggedViolation<Violation>>> {
         is_config_viable(
             sink,
             &SourceCapabilities::default(),
@@ -133,7 +133,7 @@ mod tests {
             result
                 .unwrap_err()
                 .iter()
-                .any(|v| matches!(v, Violation::ColorEncodingUnsupported))
+                .any(|v| matches!(v.violation, Violation::ColorEncodingUnsupported))
         );
     }
 
@@ -150,7 +150,7 @@ mod tests {
             result
                 .unwrap_err()
                 .iter()
-                .any(|v| matches!(v, Violation::BitDepthUnsupported))
+                .any(|v| matches!(v.violation, Violation::BitDepthUnsupported))
         );
     }
 
@@ -167,7 +167,7 @@ mod tests {
             result
                 .unwrap_err()
                 .iter()
-                .any(|v| matches!(v, Violation::RefreshRateOutOfRange { .. }))
+                .any(|v| matches!(v.violation, Violation::RefreshRateOutOfRange { .. }))
         );
     }
 
@@ -185,12 +185,12 @@ mod tests {
         assert!(
             violations
                 .iter()
-                .any(|v| matches!(v, Violation::RefreshRateOutOfRange { .. }))
+                .any(|v| matches!(v.violation, Violation::RefreshRateOutOfRange { .. }))
         );
         assert!(
             violations
                 .iter()
-                .any(|v| matches!(v, Violation::ColorEncodingUnsupported))
+                .any(|v| matches!(v.violation, Violation::ColorEncodingUnsupported))
         );
     }
 

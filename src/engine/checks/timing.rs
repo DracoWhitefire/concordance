@@ -2,7 +2,7 @@ use crate::diagnostic::Diagnostic;
 use crate::engine::rule::ConstraintRule;
 use crate::output::warning::Violation;
 use crate::types::{CableCapabilities, CandidateConfig, SinkCapabilities, SourceCapabilities};
-use display_types::pixel_clock_khz_cvt_rb_estimate;
+use display_types::pixel_clock_khz;
 
 /// Checks that the requested refresh rate falls within the sink's supported range.
 pub struct RefreshRateCheck;
@@ -15,13 +15,20 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for RefreshRateCheck {
     fn check(
         &self,
         sink: &SinkCapabilities,
-        _source: &SourceCapabilities,
+        source: &SourceCapabilities,
         _cable: &CableCapabilities,
         config: &CandidateConfig<'_>,
     ) -> Option<V> {
+        use crate::types::source::QuirkFlags;
+        if source
+            .quirks
+            .contains(QuirkFlags::IGNORE_REFRESH_RATE_RANGE)
+        {
+            return None;
+        }
         let min_hz = sink.min_v_rate?;
         let max_hz = sink.max_v_rate?;
-        let rate_hz = config.mode.refresh_rate as u16;
+        let rate_hz = config.mode.refresh_rate;
         if rate_hz < min_hz || rate_hz > max_hz {
             Some(
                 Violation::RefreshRateOutOfRange {
@@ -58,13 +65,15 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for PixelClockCheck {
         config: &CandidateConfig<'_>,
     ) -> Option<V> {
         let limit_mhz = sink.max_pixel_clock_mhz? as u32;
-        let pixel_clock_khz = pixel_clock_khz_cvt_rb_estimate(config.mode);
+        let pixel_clock_khz = pixel_clock_khz(config.mode);
         let required_mhz = pixel_clock_khz / 1000;
         if required_mhz > limit_mhz {
+            use crate::output::warning::LimitSource;
             Some(
                 Violation::PixelClockExceeded {
                     required_mhz,
                     limit_mhz,
+                    limit_source: LimitSource::Sink,
                 }
                 .into(),
             )
@@ -95,7 +104,7 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for TmdsClockCheck {
             return None;
         }
 
-        let pixel_clock_khz = pixel_clock_khz_cvt_rb_estimate(config.mode);
+        let pixel_clock_khz = pixel_clock_khz(config.mode);
 
         // TMDS character clock depends on color encoding and bit depth.
         // YCbCr 4:2:0 halves the pixel rate; deep color multiplies it.
@@ -149,10 +158,21 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for TmdsClockCheck {
         if limit_khz == u32::MAX || tmds_khz <= limit_khz {
             None
         } else {
+            use crate::output::warning::LimitSource;
+            // Cable takes priority over source over sink when multiple parties share
+            // the binding limit — cable replacement is the most actionable fix.
+            let limit_source = if cable_limit == limit_khz {
+                LimitSource::Cable
+            } else if source_limit == limit_khz {
+                LimitSource::Source
+            } else {
+                LimitSource::Sink
+            };
             Some(
-                Violation::PixelClockExceeded {
+                Violation::TmdsClockExceeded {
                     required_mhz: tmds_khz / 1000,
                     limit_mhz: limit_khz / 1000,
+                    limit_source,
                 }
                 .into(),
             )
@@ -169,7 +189,7 @@ mod tests {
     use display_types::cea861::{HdmiForumFrl, HdmiForumSinkCap, HdmiVsdb, HdmiVsdbFlags};
     use display_types::{ColorBitDepth, ColorFormat, VideoMode};
 
-    fn mode(refresh_rate: u8) -> VideoMode {
+    fn mode(refresh_rate: u16) -> VideoMode {
         VideoMode::new(1920, 1080, refresh_rate, false)
     }
 
@@ -334,6 +354,32 @@ mod tests {
     }
 
     #[test]
+    fn ignore_refresh_rate_range_quirk_bypasses_check() {
+        use crate::types::source::QuirkFlags;
+        let sink = SinkCapabilities {
+            min_v_rate: Some(24),
+            max_v_rate: Some(60),
+            ..Default::default()
+        };
+        let source = SourceCapabilities {
+            quirks: QuirkFlags::IGNORE_REFRESH_RATE_RANGE,
+            ..Default::default()
+        };
+        // 144 Hz would normally be rejected (above declared max of 60 Hz).
+        let result = ConstraintRule::<Violation>::check(
+            &RefreshRateCheck,
+            &sink,
+            &source,
+            &CableCapabilities::default(),
+            &config(&mode(144)),
+        );
+        assert!(
+            result.is_none(),
+            "IGNORE_REFRESH_RATE_RANGE must suppress the range check"
+        );
+    }
+
+    #[test]
     fn at_boundary_passes() {
         let sink = SinkCapabilities {
             min_v_rate: Some(24),
@@ -478,7 +524,7 @@ mod tests {
                 ColorBitDepth::Depth8,
                 HdmiForumFrl::NotSupported,
             ),
-            Some(Violation::PixelClockExceeded { limit_mhz: 100, .. })
+            Some(Violation::TmdsClockExceeded { limit_mhz: 100, .. })
         ));
     }
 
@@ -497,7 +543,7 @@ mod tests {
                 ColorBitDepth::Depth8,
                 HdmiForumFrl::NotSupported,
             ),
-            Some(Violation::PixelClockExceeded { limit_mhz: 100, .. })
+            Some(Violation::TmdsClockExceeded { limit_mhz: 100, .. })
         ));
     }
 
@@ -528,7 +574,7 @@ mod tests {
                 ColorBitDepth::Depth10,
                 HdmiForumFrl::NotSupported,
             ),
-            Some(Violation::PixelClockExceeded { limit_mhz: 165, .. })
+            Some(Violation::TmdsClockExceeded { limit_mhz: 165, .. })
         ));
     }
 
@@ -568,7 +614,7 @@ mod tests {
                 ColorBitDepth::Depth8,
                 HdmiForumFrl::NotSupported,
             ),
-            Some(Violation::PixelClockExceeded { limit_mhz: 100, .. })
+            Some(Violation::TmdsClockExceeded { limit_mhz: 100, .. })
         ));
     }
 
@@ -625,7 +671,81 @@ mod tests {
                 ColorBitDepth::Depth8,
                 HdmiForumFrl::NotSupported,
             ),
-            Some(Violation::PixelClockExceeded { limit_mhz: 100, .. })
+            Some(Violation::TmdsClockExceeded { limit_mhz: 100, .. })
+        ));
+    }
+
+    // --- TmdsClockCheck: LimitSource field tests ---
+
+    #[test]
+    fn tmds_limit_source_is_sink_when_sink_is_binding() {
+        use crate::output::warning::LimitSource;
+        // Sink limited to 100 MHz; source unconstrained; cable unconstrained.
+        let sink = sink_with_tmds_limit(100);
+        let m = mode(60);
+        assert!(matches!(
+            tmds_check(
+                &sink,
+                &SourceCapabilities::default(),
+                &CableCapabilities::default(),
+                &m,
+                ColorFormat::Rgb444,
+                ColorBitDepth::Depth8,
+                HdmiForumFrl::NotSupported,
+            ),
+            Some(Violation::TmdsClockExceeded {
+                limit_source: LimitSource::Sink,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn tmds_limit_source_is_source_when_source_is_binding() {
+        use crate::output::warning::LimitSource;
+        // Source limited to 100_000 kHz; sink unconstrained; cable unconstrained.
+        let source = source_with_tmds_limit(100_000);
+        let m = mode(60);
+        assert!(matches!(
+            tmds_check(
+                &SinkCapabilities::default(),
+                &source,
+                &CableCapabilities::default(),
+                &m,
+                ColorFormat::Rgb444,
+                ColorBitDepth::Depth8,
+                HdmiForumFrl::NotSupported,
+            ),
+            Some(Violation::TmdsClockExceeded {
+                limit_source: LimitSource::Source,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn tmds_limit_source_is_cable_when_cable_is_binding() {
+        use crate::output::warning::LimitSource;
+        // Cable limited to 100_000 kHz; sink and source both unconstrained.
+        let cable = CableCapabilities {
+            max_tmds_clock: 100_000,
+            ..CableCapabilities::unconstrained()
+        };
+        let m = mode(60);
+        assert!(matches!(
+            tmds_check(
+                &SinkCapabilities::default(),
+                &SourceCapabilities::default(),
+                &cable,
+                &m,
+                ColorFormat::Rgb444,
+                ColorBitDepth::Depth8,
+                HdmiForumFrl::NotSupported,
+            ),
+            Some(Violation::TmdsClockExceeded {
+                limit_source: LimitSource::Cable,
+                ..
+            })
         ));
     }
 
@@ -645,7 +765,7 @@ mod tests {
                 ColorBitDepth::Depth8,
                 HdmiForumFrl::NotSupported,
             ),
-            Some(Violation::PixelClockExceeded { .. })
+            Some(Violation::TmdsClockExceeded { .. })
         ));
         assert!(
             tmds_check(

@@ -1,7 +1,9 @@
 # concordance
 
 [![CI](https://github.com/DracoWhitefire/concordance/actions/workflows/ci.yml/badge.svg)](https://github.com/DracoWhitefire/concordance/actions/workflows/ci.yml)
-[![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](LICENSE)
+[![crates.io](https://img.shields.io/crates/v/concordance.svg)](https://crates.io/crates/concordance)
+[![docs.rs](https://docs.rs/concordance/badge.svg)](https://docs.rs/concordance)
+[![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](https://github.com/DracoWhitefire/concordance/blob/main/LICENSE)
 [![Rust 1.85+](https://img.shields.io/badge/rustc-1.85+-orange.svg)](https://blog.rust-lang.org/2025/02/20/Rust-1.85.0.html)
 
 HDMI 2.1 mode negotiation — policy layer of the display connection stack.
@@ -22,21 +24,25 @@ For embedded and firmware targets, the constraint engine is also exposed as a st
 
 ```rust
 use concordance::{is_config_viable, SinkCapabilities, SourceCapabilities, CableCapabilities, CandidateConfig};
-use display_types::{ColorBitDepth, ColorFormat, VideoMode};
-use display_types::cea861::HdmiForumFrl;
+use display_types::{ColorBitDepth, ColorFormat};
+use display_types::cea861::{HdmiForumFrl, vic_to_mode};
 
-let mode = VideoMode::new(3840, 2160, 60, false);
-let config = CandidateConfig {
-    mode: &mode,
-    color_encoding: ColorFormat::Rgb444,
-    bit_depth: ColorBitDepth::Depth8,
-    frl_rate: HdmiForumFrl::NotSupported,
-    dsc_enabled: false,
-};
+// For standard CTA modes, use vic_to_mode — it carries the exact pixel clock from
+// the CEA-861 timing table, so bandwidth ceiling checks are precise.
+// VIC 97 = 3840×2160 @ 60 Hz (594 MHz). Other common VICs: 16 = 1080p@60, 97 = 4K@60.
+let mode = vic_to_mode(97).unwrap();
+let config = CandidateConfig::new(
+    &mode,
+    ColorFormat::Rgb444,
+    ColorBitDepth::Depth8,
+    HdmiForumFrl::NotSupported,
+    false,
+);
 
 match is_config_viable(&sink, &source, &cable, &config) {
     Ok(_warnings) => println!("viable"),
     Err(violations) => {
+        // Each violation is a TaggedViolation<Violation>: Display shows "[rule] message".
         for v in &violations { eprintln!("rejected: {v}"); }
     }
 }
@@ -52,8 +58,8 @@ let configs = NegotiatorBuilder::default()
 
 for cfg in &configs {
     println!("{}×{}@{} {:?} {:?}",
-        cfg.mode.width, cfg.mode.height, cfg.mode.refresh_rate,
-        cfg.color_encoding, cfg.bit_depth);
+        cfg.resolved.mode.width, cfg.resolved.mode.height, cfg.resolved.mode.refresh_rate,
+        cfg.resolved.color_encoding, cfg.resolved.bit_depth);
 }
 ```
 
@@ -115,15 +121,20 @@ Without `alloc` or `std`, only `is_config_viable` is available. The three input 
 
 concordance is the policy layer. It consumes the typed model; it does not produce it.
 
-```
-piaf  ─────────────────────────────────► DisplayCapabilities
-(EDID parser)                                     │
-                                         sink_capabilities_from_display()
-                                                  │
-                                                  ▼
-                              SinkCapabilities ──┐
- integration layer ────────► SourceCapabilities ─┤─► NegotiatorBuilder ──► Vec<NegotiatedConfig>
- (GPU / cable discovery)     CableCapabilities ──┘
+```mermaid
+flowchart LR
+    piaf["piaf\n(EDID parser)"]
+    dc["DisplayCapabilities"]
+    sink["SinkCapabilities"]
+    nb["NegotiatorBuilder"]
+    out["Vec&lt;NegotiatedConfig&gt;"]
+    integ["integration layer\n(GPU / cable discovery)"]
+
+    piaf --> dc
+    dc -->|"sink_capabilities_from_display"| sink
+    sink --> nb
+    integ -->|"SourceCapabilities\nCableCapabilities"| nb
+    nb --> out
 ```
 
 All types in `SinkCapabilities` — `VideoMode`, `HdmiForumSinkCap`, `HdmiVsdb`,
@@ -143,11 +154,17 @@ cable capabilities.
 - **InfoFrame encoding** — signaling the negotiated configuration to the sink.
 - **HDCP** — out of scope for the entire stack.
 
-## Contributing
+## Documentation
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines and [doc/setup.md](doc/setup.md)
-for build and test instructions.
+Extended documentation lives under [`doc/`](doc/).
 
-## License
+**Understanding the library**
 
-Licensed under the [Mozilla Public License 2.0](LICENSE).
+- [`doc/architecture.md`](doc/architecture.md) — pipeline structure, constraint rules, ranking algorithm, and design principles
+- [`doc/enumerator.md`](doc/enumerator.md) — candidate enumeration, Cartesian product dimensions, and pre-filtering
+
+**Contributing**
+
+- [`doc/setup.md`](doc/setup.md) — build, test, and coverage commands
+- [`doc/testing.md`](doc/testing.md) — testing strategy, fixture corpus, and CI expectations
+- [`doc/roadmap.md`](doc/roadmap.md) — planned features and future work
