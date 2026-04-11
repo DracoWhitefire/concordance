@@ -550,3 +550,6 @@ the previous optimistic behavior.
 - **Serde on all public types** — every public type derives `Serialize`/`Deserialize` behind
   a `serde` feature flag, covering inputs, outputs, and policy types. Enables diagnostic
   tooling, config persistence, and test fixtures without making serde a required dependency.
+- **Attested releases.** Every release is published through a GitHub Actions workflow
+  that signs the `.crate` package with [SLSA Build Level 2](https://slsa.dev) provenance.
+  Verify with `gh attestation verify <file> --repo DracoWhitefire/concordance`.
