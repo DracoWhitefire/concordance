@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **SLSA Build Level 2 provenance** — release artifacts are attested via
+  `actions/attest-build-provenance` and verified with
+  `gh attestation verify <file> --repo DracoWhitefire/concordance`.
+
 ### Internal
 
 - Fixed coverage ratchet CI: added `LC_NUMERIC=C` to the baseline `printf` to prevent
