@@ -29,7 +29,9 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for RefreshRateCheck {
         let min_hz = sink.min_v_rate?;
         let max_hz = sink.max_v_rate?;
         let rate_hz = config.mode.refresh_rate?;
-        if rate_hz < display_types::RefreshRate::from(min_hz) || rate_hz > display_types::RefreshRate::from(max_hz) {
+        if rate_hz < display_types::RefreshRate::from(min_hz)
+            || rate_hz > display_types::RefreshRate::from(max_hz)
+        {
             Some(
                 Violation::RefreshRateOutOfRange {
                     rate_hz,
