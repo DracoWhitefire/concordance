@@ -48,7 +48,7 @@ mod tests {
     use display_types::{ColorBitDepth, ColorFormat, VideoMode};
 
     fn mode() -> VideoMode {
-        VideoMode::new(3840, 2160, 60, false)
+        VideoMode::new(3840, 2160, 60u16, false)
     }
 
     fn config_dsc(mode: &VideoMode, dsc_enabled: bool) -> CandidateConfig<'_> {

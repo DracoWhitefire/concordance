@@ -198,7 +198,7 @@ exact clock is known:
 ```rust,no_run
 # use display_types::VideoMode;
 // Custom panel: supply the exact pixel clock from the PLL or hardware register.
-let mode = VideoMode::new(1920, 1200, 60, false).with_pixel_clock(154_000);
+let mode = VideoMode::new(1920, 1200, 60u16, false).with_pixel_clock(154_000);
 ```
 
 Without `.with_pixel_clock`, the pixel clock is derived via CVT-RB estimation, which

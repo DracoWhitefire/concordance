@@ -12,7 +12,9 @@ use concordance::{
     CableCapabilities, NegotiatorBuilder, SinkCapabilities, SourceCapabilities, SupportedModes,
 };
 use display_types::cea861::{HdmiForumFrl, HdmiForumSinkCap};
-use display_types::{ColorBitDepth, ColorBitDepths, ColorCapabilities, ColorFormat, VideoMode};
+use display_types::{
+    ColorBitDepth, ColorBitDepths, ColorCapabilities, ColorFormat, RefreshRate, VideoMode,
+};
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -99,7 +101,7 @@ fn single_tmds_mode_accepted() {
     // Sink: 1080p@60, RGB 8 bpc only, no HF-SCDB (TMDS transport only).
     // Source: default — TMDS only, max_tmds_clock=0 (no source clock limit).
     // No limits anywhere → pixel clock ≈ 136 MHz passes through unchecked.
-    let sink = sink_with_modes(vec![VideoMode::new(1920, 1080, 60, false)], rgb8());
+    let sink = sink_with_modes(vec![VideoMode::new(1920, 1080, 60u16, false)], rgb8());
     let source = SourceCapabilities::default();
     let cable = CableCapabilities::unconstrained();
 
@@ -107,13 +109,11 @@ fn single_tmds_mode_accepted() {
 
     assert_eq!(configs.len(), 1, "exactly one config expected");
     let cfg = &configs[0];
+    assert_eq!(cfg.resolved.mode.width, 1920);
+    assert_eq!(cfg.resolved.mode.height, 1080);
     assert_eq!(
-        (
-            cfg.resolved.mode.width,
-            cfg.resolved.mode.height,
-            cfg.resolved.mode.refresh_rate
-        ),
-        (1920, 1080, 60)
+        cfg.resolved.mode.refresh_rate,
+        Some(RefreshRate::from(60u16))
     );
     assert_eq!(cfg.resolved.color_encoding, ColorFormat::Rgb444);
     assert_eq!(
@@ -129,7 +129,7 @@ fn single_tmds_mode_accepted() {
 #[test]
 fn source_tmds_ceiling_rejects_all_modes() {
     // 1080p@60 RGB 8 bpc TMDS clock ≈ 136 MHz; source ceiling = 50 MHz → all rejected.
-    let sink = sink_with_modes(vec![VideoMode::new(1920, 1080, 60, false)], rgb8());
+    let sink = sink_with_modes(vec![VideoMode::new(1920, 1080, 60u16, false)], rgb8());
     let mut source = SourceCapabilities::default();
     source.max_tmds_clock = 50_000; // 50 MHz — below 1080p@60 8 bpc TMDS clock
     let cable = CableCapabilities::unconstrained();
@@ -150,8 +150,8 @@ fn full_hdmi21_native_resolution_ranks_first() {
     // Modes: 1080p@60 (non-native) and 4K@60 (native — larger pixel area).
     let mut sink = sink_with_modes(
         vec![
-            VideoMode::new(1920, 1080, 60, false),
-            VideoMode::new(3840, 2160, 60, false),
+            VideoMode::new(1920, 1080, 60u16, false),
+            VideoMode::new(3840, 2160, 60u16, false),
         ],
         rgb8(),
     );
@@ -185,7 +185,7 @@ fn full_hdmi21_native_resolution_ranks_first() {
 /// configuration may use an FRL rate above that ceiling.
 #[test]
 fn cable_frl_ceiling_is_binding_constraint() {
-    let mut sink = sink_with_modes(vec![VideoMode::new(1920, 1080, 60, false)], rgb8());
+    let mut sink = sink_with_modes(vec![VideoMode::new(1920, 1080, 60u16, false)], rgb8());
     sink.hdmi_forum = Some(hf_sink(HdmiForumFrl::Rate12Gbps4Lanes, 600));
     let mut source = SourceCapabilities::default();
     source.max_tmds_clock = 600_000;
@@ -214,8 +214,8 @@ fn performance_policy_ranks_high_refresh_first() {
     // Both are "native" since there is no larger mode. High refresh wins as tiebreaker.
     let sink = sink_with_modes(
         vec![
-            VideoMode::new(1920, 1080, 60, false),
-            VideoMode::new(1920, 1080, 144, false),
+            VideoMode::new(1920, 1080, 60u16, false),
+            VideoMode::new(1920, 1080, 144u16, false),
         ],
         rgb8(),
     );
@@ -228,9 +228,9 @@ fn performance_policy_ranks_high_refresh_first() {
 
     assert!(!configs.is_empty());
     assert_eq!(
-        configs[0].resolved.mode.refresh_rate, 144,
-        "BEST_PERFORMANCE should rank 144 Hz before 60 Hz, got {} Hz first",
         configs[0].resolved.mode.refresh_rate,
+        Some(RefreshRate::from(144u16)),
+        "BEST_PERFORMANCE should rank 144 Hz before 60 Hz",
     );
 }
 
@@ -244,7 +244,7 @@ fn best_quality_prefers_higher_bit_depth() {
     caps.rgb444 = ColorBitDepths::BPC_8
         .with(ColorBitDepth::Depth10)
         .with(ColorBitDepth::Depth12);
-    let sink = sink_with_modes(vec![VideoMode::new(1920, 1080, 60, false)], caps);
+    let sink = sink_with_modes(vec![VideoMode::new(1920, 1080, 60u16, false)], caps);
     // 1080p@60 12 bpc TMDS clock ≈ 204 MHz (pixel_clock × 6/4); supply 250 MHz headroom.
     let mut source = SourceCapabilities::default();
     source.max_tmds_clock = 250_000;
@@ -268,7 +268,7 @@ fn best_quality_prefers_higher_bit_depth() {
 #[test]
 fn best_quality_prefers_rgb_over_ycbcr444_at_same_depth() {
     let sink = sink_with_modes(
-        vec![VideoMode::new(1920, 1080, 60, false)],
+        vec![VideoMode::new(1920, 1080, 60u16, false)],
         rgb_deep_and_ycbcr444(),
     );
     // Supply enough TMDS headroom for all deep-color combinations at 1080p@60.

@@ -108,7 +108,7 @@ mod tests {
     use display_types::{ColorBitDepth, ColorBitDepths, ColorCapabilities, ColorFormat, VideoMode};
 
     fn mode() -> VideoMode {
-        VideoMode::new(1920, 1080, 60, false)
+        VideoMode::new(1920, 1080, 60u16, false)
     }
 
     fn config<'a>(
@@ -258,8 +258,8 @@ mod tests {
     #[test]
     fn ycbcr420_rejected_when_mode_absent_from_populated_lists() {
         use crate::types::SupportedModes;
-        let listed_mode = VideoMode::new(3840, 2160, 60, false);
-        let other_mode = VideoMode::new(1920, 1080, 60, false);
+        let listed_mode = VideoMode::new(3840, 2160, 60u16, false);
+        let other_mode = VideoMode::new(1920, 1080, 60u16, false);
         let mut caps = ColorCapabilities::default();
         caps.ycbcr420 = ColorBitDepths::BPC_8; // display-level claim
         let (modes, _) = SupportedModes::from_vec(alloc::vec![listed_mode]);

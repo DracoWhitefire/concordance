@@ -793,8 +793,8 @@ mod tests {
         // SliceEnumerator should enumerate the caller-supplied slice regardless of
         // what sink.supported_modes contains.
         use crate::types::sink::SupportedModes;
-        let sink_mode = VideoMode::new(3840, 2160, 60, false);
-        let slice_mode = VideoMode::new(1920, 1080, 60, false);
+        let sink_mode = VideoMode::new(3840, 2160, 60u16, false);
+        let slice_mode = VideoMode::new(1920, 1080, 60u16, false);
 
         let mut caps = display_types::ColorCapabilities::default();
         caps.rgb444 = ColorBitDepths::BPC_8;

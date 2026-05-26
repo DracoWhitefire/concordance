@@ -7,11 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-23
+
 ### Added
 
 - **SLSA Build Level 2 provenance** — release artifacts are attested via
   `actions/attest-build-provenance` and verified with
   `gh attestation verify <file> --repo DracoWhitefire/concordance`.
+
+### Changed
+
+- **`display-types` updated to 0.4** — tracks DisplayID 2.x support added in `piaf` 0.4.1.
 
 ### Internal
 

@@ -197,7 +197,7 @@ mod tests {
     use display_types::{ColorBitDepth, ColorFormat, VideoMode};
 
     fn mode() -> VideoMode {
-        VideoMode::new(1920, 1080, 60, false)
+        VideoMode::new(1920, 1080, 60u16, false)
     }
 
     fn config(mode: &VideoMode) -> CandidateConfig<'_> {
