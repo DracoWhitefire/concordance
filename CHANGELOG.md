@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **TMDS clock check overflow** — `TmdsClockCheck` multiplied the pixel clock by the
+  deep-color factor in `u32`. A sink-supplied pixel clock above ~537 GHz (reachable from
+  EDID via the clock estimate for a large CTA Type X timing) panicked with overflow checks enabled and wrapped
+  to a small value otherwise, letting an impossible TMDS mode pass. The rate is now
+  computed in `u64`.
+
 ## [0.2.0] - 2026-05-23
 
 ### Added
