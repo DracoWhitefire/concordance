@@ -136,10 +136,17 @@ fn main() {
                         "  {:<4} {:<20} {:<6} {:<14} {:<10} {:<5}",
                         rank + 1,
                         format!("{}x{}", cfg.resolved.mode.width, cfg.resolved.mode.height),
-                        cfg.resolved.mode.refresh_rate,
+                        cfg.resolved
+                            .mode
+                            .refresh_rate
+                            .map_or_else(|| "-".to_string(), |rate| rate.to_string()),
                         format!("{:?}", cfg.resolved.color_encoding),
                         format!("{:?}", cfg.resolved.bit_depth),
-                        if cfg.resolved.dsc_required { "yes" } else { "no" },
+                        if cfg.resolved.dsc_required {
+                            "yes"
+                        } else {
+                            "no"
+                        },
                     );
                     for w in &cfg.warnings {
                         println!("       warning: {w}");

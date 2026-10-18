@@ -1,0 +1,181 @@
+name: Release Prep
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type (auto = let cargo semver-checks decide)'
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+
+env:
+  CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  prepare:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # Always operates on develop (see checkout below). Fail loudly when started
+      # from another branch, whose copy of this workflow may be outdated. (A modified
+      # copy could remove this check; it only guards against mistakes.)
+      - name: Require develop
+        if: github.ref != 'refs/heads/develop'
+        run: |
+          echo "::error::Run this workflow from develop (started from ${GITHUB_REF})."
+          exit 1
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # v1
+        with:
+          toolchain: stable
+
+      - name: Cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-release-
+
+      # Prebuilt, checksum-verified binary: the newest version listed in the pinned
+      # install-action's manifest, so it advances whenever Dependabot bumps the
+      # action. A fixed version would stop understanding the rustdoc JSON of newer
+      # stable toolchains. (Previously ~/.cargo/bin was restored from the Actions
+      # cache, which also holds the cargo/rustc proxies used by this job.)
+      - name: Install cargo-semver-checks
+        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        with:
+          tool: cargo-semver-checks
+
+      - name: Determine bump type and new version
+        id: version
+        run: |
+          CURRENT=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+          MINOR=$(echo "$CURRENT" | cut -d. -f2)
+          PATCH=$(echo "$CURRENT" | cut -d. -f3)
+
+          BUMP="${{ inputs.bump }}"
+
+          if [ "$BUMP" = "auto" ]; then
+            echo "Running cargo semver-checks to determine required bump..."
+            if cargo semver-checks --release-type patch; then
+              BUMP=patch
+            elif [ "$MAJOR" = "0" ]; then
+              # For 0.x crates the minor bump is the highest meaningful breaking
+              # release; bumping to 1.0.0 is a deliberate stabilisation decision.
+              BUMP=minor
+            elif cargo semver-checks --release-type minor; then
+              BUMP=minor
+            else
+              BUMP=major
+            fi
+            echo "Auto-detected minimum required bump: $BUMP"
+          else
+            if [ "$MAJOR" = "0" ] && [ "$BUMP" = "major" ]; then
+              echo "::error::Cannot bump a 0.x crate to 1.0.0 via this workflow — stabilising to 1.0.0 is a deliberate decision. Update Cargo.toml manually."
+              exit 1
+            fi
+            echo "Validating requested bump type: $BUMP"
+            if ! cargo semver-checks --release-type "$BUMP"; then
+              echo "::error::semver-checks reports '$BUMP' is insufficient for the API changes present. Choose a higher bump type."
+              exit 1
+            fi
+          fi
+
+          case "$BUMP" in
+            patch) NEW="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
+            minor) NEW="${MAJOR}.$((MINOR + 1)).0" ;;
+            major) NEW="$((MAJOR + 1)).0.0" ;;
+          esac
+
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "new=$NEW" >> "$GITHUB_OUTPUT"
+          echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
+          echo "Current: $CURRENT → New: $NEW (bump: $BUMP)"
+
+      - name: Bump Cargo.toml version
+        run: |
+          NEW="${{ steps.version.outputs.new }}"
+          sed -i "s/^version = \"[0-9]*\.[0-9]*\.[0-9]*\"/version = \"${NEW}\"/" Cargo.toml
+
+      - name: Update CHANGELOG.md
+        run: |
+          NEW="${{ steps.version.outputs.new }}"
+          TODAY=$(date -u +%Y-%m-%d)
+          if ! grep -q '^## \[Unreleased\]' CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [Unreleased]' section — add one before releasing."
+            exit 1
+          fi
+          # Insert the new versioned header immediately after [Unreleased], leaving
+          # that section empty for the next cycle. The original blank line that
+          # followed [Unreleased] becomes the separator before the content.
+          awk -v new_hdr="## [${NEW}] - ${TODAY}" '
+            /^## \[Unreleased\]$/ { print; print ""; print new_hdr; next }
+            { print }
+          ' CHANGELOG.md > CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
+
+      - name: Refresh Cargo.lock
+        # Runs without --locked so Cargo regenerates the lock file to reflect
+        # the new package version; also acts as a quick compile sanity check.
+        run: cargo check
+
+      - name: Refresh examples/negotiate/Cargo.lock
+        # The example is its own workspace with a tracked lock file, which records
+        # this crate's version through the path dependency; CI builds it with --locked.
+        run: cargo check --manifest-path examples/negotiate/Cargo.toml
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit and push release branch
+        run: |
+          NEW="${{ steps.version.outputs.new }}"
+          git checkout -b "release/v${NEW}"
+          git add Cargo.toml Cargo.lock examples/negotiate/Cargo.lock CHANGELOG.md
+          git commit -m "Release v${NEW}"
+          git push origin "release/v${NEW}"
+
+      - name: Open pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEW="${{ steps.version.outputs.new }}"
+          CURRENT="${{ steps.version.outputs.current }}"
+          gh pr create \
+            --base develop \
+            --head "release/v${NEW}" \
+            --title "Release v${NEW}" \
+            --body "$(cat <<EOF
+          Automated release prep for **v${NEW}**.
+
+          | File | Change |
+          |---|---|
+          | \`Cargo.toml\` | \`${CURRENT}\` → \`${NEW}\` |
+          | \`CHANGELOG.md\` | \`[Unreleased]\` stamped with today's date |
+          | \`Cargo.lock\`, \`examples/negotiate/Cargo.lock\` | regenerated |
+
+          Once CI passes and this PR merges, run the [Release Tag](${{ github.server_url }}/${{ github.repository }}/actions/workflows/release-tag.yml) workflow to push the tag and kick off publish.
+          EOF
+          )"
+
