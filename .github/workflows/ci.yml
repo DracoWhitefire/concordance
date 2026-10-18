@@ -30,6 +30,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
+            examples/negotiate/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
@@ -53,6 +54,9 @@ jobs:
 
       - name: Build (no_std)
         run: cargo build --locked --no-default-features
+
+      - name: Build negotiate example
+        run: cargo build --locked --manifest-path examples/negotiate/Cargo.toml
 
   coverage:
     name: Coverage
