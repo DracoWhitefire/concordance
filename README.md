@@ -5,6 +5,8 @@
 [![docs.rs](https://docs.rs/concordance/badge.svg)](https://docs.rs/concordance)
 [![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue.svg)](https://github.com/DracoWhitefire/concordance/blob/main/LICENSE)
 [![Rust 1.85+](https://img.shields.io/badge/rustc-1.85+-orange.svg)](https://blog.rust-lang.org/2025/02/20/Rust-1.85.0.html)
+[![SLSA Level 2](https://slsa.dev/images/gh-badge-level2.svg)](https://slsa.dev)
+[![trusted publishing only](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fcrates.io%2Fapi%2Fv1%2Fcrates%2Fconcordance&query=%24.crate.trustpub_only&label=trusted%20publishing%20only)](#verifying-releases)
 
 HDMI 2.1 mode negotiation — policy layer of the display connection stack.
 
@@ -168,3 +170,35 @@ Extended documentation lives under [`doc/`](doc/).
 - [`doc/setup.md`](doc/setup.md) — build, test, and coverage commands
 - [`doc/testing.md`](doc/testing.md) — testing strategy, fixture corpus, and CI expectations
 - [`doc/roadmap.md`](doc/roadmap.md) — planned features and future work
+
+## Verifying releases
+
+Releases are built on GitHub Actions and attested with
+[SLSA Build Level 2](https://slsa.dev) provenance (from the next release after 0.1.0). To
+verify a release `.crate` against its signed provenance, install the
+[GitHub CLI](https://cli.github.com/) and run:
+
+```sh
+gh attestation verify concordance-X.Y.Z.crate --repo DracoWhitefire/concordance
+```
+
+The attested `.crate` is attached to each
+[GitHub release](https://github.com/DracoWhitefire/concordance/releases).
+
+Those releases are also uploaded through crates.io
+[trusted publishing](https://rust-lang.github.io/rfcs/3691-trusted-publishing-cratesio.html): the publish
+workflow obtains a short-lived token via OpenID Connect instead of using a stored
+API token. crates.io can also reject uploads made with an API token for this crate;
+the badge above shows whether that setting is on. Each version's publishing details,
+including the workflow run and commit, are available from the crates.io API:
+
+```sh
+curl -A "your-tool (contact)" https://crates.io/api/v1/crates/concordance/X.Y.Z
+# see .version.trustpub_data
+```
+
+0.1.0 was uploaded with an API token; it carries no provenance and has no GitHub release.
+
+## License
+
+Licensed under the [Mozilla Public License 2.0](https://github.com/DracoWhitefire/concordance/blob/main/LICENSE).

@@ -265,7 +265,7 @@ mod tests {
     use super::{color_format_quality, compare_configs, pixel_area, record_preferences};
 
     fn mode(width: u16, height: u16) -> VideoMode {
-        VideoMode::new(width, height, 60, false)
+        VideoMode::new(width, height, 60u16, false)
     }
 
     /// Builds a `NegotiatedConfig` with the given fields for use in ranking tests.
@@ -871,7 +871,7 @@ mod tests {
             false,
         );
         let narrower = base();
-        let native_pixels = pixel_area(&VideoMode::new(3840, 2160, 60, false)); // 4K is native
+        let native_pixels = pixel_area(&VideoMode::new(3840, 2160, 60u16, false)); // 4K is native
         let policy = NegotiationPolicy::BEST_QUALITY;
 
         assert_eq!(
@@ -943,7 +943,7 @@ mod tests {
     #[test]
     fn trace_no_native_resolution_when_not_native() {
         let mut c = base();
-        let other_native = pixel_area(&VideoMode::new(3840, 2160, 60, false));
+        let other_native = pixel_area(&VideoMode::new(3840, 2160, 60u16, false));
         record_preferences(&mut c, &NegotiationPolicy::BEST_QUALITY, other_native);
         assert!(!has_preference(&c, "native resolution preferred"));
     }

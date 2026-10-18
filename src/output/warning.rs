@@ -1,5 +1,7 @@
 //! Built-in warning and violation types.
 
+use display_types::RefreshRate;
+
 /// Identifies which party imposed the binding limit in a bandwidth violation.
 ///
 /// When a bandwidth check fails, this value tells the caller *which* end of the
@@ -158,13 +160,13 @@ pub enum Violation {
     DscUnsupported,
 
     /// The vertical refresh rate is outside the sink's declared range.
-    #[error("refresh rate {rate_hz} Hz outside sink range [{min_hz}, {max_hz}] Hz")]
+    #[error("refresh rate {rate_hz} outside sink range [{min_hz}, {max_hz}] Hz")]
     RefreshRateOutOfRange {
-        /// Refresh rate of the candidate in Hz.
-        rate_hz: u16,
-        /// Minimum declared by the sink.
+        /// Refresh rate of the candidate.
+        rate_hz: RefreshRate,
+        /// Minimum declared by the sink in Hz.
         min_hz: u16,
-        /// Maximum declared by the sink.
+        /// Maximum declared by the sink in Hz.
         max_hz: u16,
     },
 }

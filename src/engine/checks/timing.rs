@@ -28,8 +28,10 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for RefreshRateCheck {
         }
         let min_hz = sink.min_v_rate?;
         let max_hz = sink.max_v_rate?;
-        let rate_hz = config.mode.refresh_rate;
-        if rate_hz < min_hz || rate_hz > max_hz {
+        let rate_hz = config.mode.refresh_rate?;
+        if rate_hz < display_types::RefreshRate::from(min_hz)
+            || rate_hz > display_types::RefreshRate::from(max_hz)
+        {
             Some(
                 Violation::RefreshRateOutOfRange {
                     rate_hz,
@@ -119,7 +121,10 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for TmdsClockCheck {
             _ => 4u32, // 8 bpc: clock × 1
         };
         // tmds_clock = pixel_clock × depth_numer / (4 × encoding_denom)
-        let tmds_khz = pixel_clock_khz * depth_numer / (4 * encoding_denom);
+        // Computed in u64: the pixel clock comes from sink-supplied EDID data and can be
+        // anywhere in u32 range, so the deep-color multiply would overflow u32.
+        let tmds_khz =
+            u64::from(pixel_clock_khz) * u64::from(depth_numer) / u64::from(4 * encoding_denom);
 
         // Find the binding ceiling across sink, source, and cable.
         // A sink may declare its TMDS ceiling via the HDMI 1.x VSDB, the HDMI 2.x
@@ -155,7 +160,7 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for TmdsClockCheck {
         };
         let limit_khz = sink_limit.min(source_limit).min(cable_limit);
 
-        if limit_khz == u32::MAX || tmds_khz <= limit_khz {
+        if limit_khz == u32::MAX || tmds_khz <= u64::from(limit_khz) {
             None
         } else {
             use crate::output::warning::LimitSource;
@@ -170,7 +175,7 @@ impl<V: Diagnostic + From<Violation>> ConstraintRule<V> for TmdsClockCheck {
             };
             Some(
                 Violation::TmdsClockExceeded {
-                    required_mhz: tmds_khz / 1000,
+                    required_mhz: u32::try_from(tmds_khz / 1000).unwrap_or(u32::MAX),
                     limit_mhz: limit_khz / 1000,
                     limit_source,
                 }
@@ -324,9 +329,9 @@ mod tests {
         assert!(matches!(
             check(&sink, &mode(144)),
             Some(Violation::RefreshRateOutOfRange {
-                rate_hz: 144,
                 min_hz: 24,
-                max_hz: 60
+                max_hz: 60,
+                ..
             })
         ));
     }
@@ -341,9 +346,9 @@ mod tests {
         assert!(matches!(
             check(&sink, &mode(24)),
             Some(Violation::RefreshRateOutOfRange {
-                rate_hz: 24,
                 min_hz: 48,
-                max_hz: 144
+                max_hz: 144,
+                ..
             })
         ));
     }
@@ -775,6 +780,47 @@ mod tests {
                 &m,
                 ColorFormat::YCbCr420,
                 ColorBitDepth::Depth8,
+                HdmiForumFrl::NotSupported,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn extreme_pixel_clock_deep_color_does_not_overflow() {
+        // A sink-supplied clock near u32::MAX at 16 bpc (× 2) overflowed the u32
+        // multiply: panic with overflow checks, wrap-around (false accept) without.
+        let m = mode(60).with_pixel_clock(u32::MAX);
+        let v = tmds_check(
+            &SinkCapabilities::default(),
+            &source_with_tmds_limit(600_000),
+            &CableCapabilities::default(),
+            &m,
+            ColorFormat::Rgb444,
+            ColorBitDepth::Depth16,
+            HdmiForumFrl::NotSupported,
+        );
+        assert!(matches!(
+            v,
+            Some(Violation::TmdsClockExceeded {
+                required_mhz: 8_589_934,
+                limit_mhz: 600,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn extreme_pixel_clock_without_limits_does_not_overflow() {
+        let m = mode(60).with_pixel_clock(u32::MAX);
+        assert!(
+            tmds_check(
+                &SinkCapabilities::default(),
+                &SourceCapabilities::default(),
+                &CableCapabilities::default(),
+                &m,
+                ColorFormat::Rgb444,
+                ColorBitDepth::Depth16,
                 HdmiForumFrl::NotSupported,
             )
             .is_none()

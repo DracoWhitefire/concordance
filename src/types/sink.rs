@@ -301,8 +301,8 @@ mod tests {
     fn unique_modes_produce_no_warning() {
         let mut caps = DisplayCapabilities::default();
         caps.supported_modes = alloc::vec![
-            VideoMode::new(1920, 1080, 60, false),
-            VideoMode::new(3840, 2160, 60, false),
+            VideoMode::new(1920, 1080, 60u16, false),
+            VideoMode::new(3840, 2160, 60u16, false),
         ];
         let (sink, warnings) = sink_capabilities_from_display(&caps);
         assert!(warnings.is_empty());
@@ -313,7 +313,7 @@ mod tests {
     /// deduplicated list contains only the first occurrence.
     #[test]
     fn duplicate_modes_produce_warning() {
-        let mode = VideoMode::new(1920, 1080, 60, false);
+        let mode = VideoMode::new(1920, 1080, 60u16, false);
         let mut caps = DisplayCapabilities::default();
         caps.supported_modes = alloc::vec![mode.clone(), mode.clone()];
         let (sink, warnings) = sink_capabilities_from_display(&caps);

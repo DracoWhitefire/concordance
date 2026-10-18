@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn new_matches_struct_literal() {
-        let mode = VideoMode::new(1920, 1080, 60, false);
+        let mode = VideoMode::new(1920, 1080, 60u16, false);
         let via_new = CandidateConfig::new(
             &mode,
             ColorFormat::Rgb444,

@@ -316,7 +316,7 @@ mod tests {
     /// mode list is used even when the sink has no declared modes.
     #[test]
     fn with_enumerator_overrides_sink_modes() {
-        let mode = VideoMode::new(1920, 1080, 60, false);
+        let mode = VideoMode::new(1920, 1080, 60u16, false);
         let sink = rgb8_sink(); // no supported_modes
         let source = SourceCapabilities::default();
         let cable = CableCapabilities::unconstrained();
@@ -335,7 +335,7 @@ mod tests {
     fn with_engine_accept_all_overrides_default_rejection() {
         // 1080p@60 RGB 8 bpc TMDS clock ≈ 136 MHz; source ceiling = 50 MHz → default
         // engine rejects it. AcceptAllEngine bypasses that check entirely.
-        let mode = VideoMode::new(1920, 1080, 60, false);
+        let mode = VideoMode::new(1920, 1080, 60u16, false);
         let sink = rgb8_sink();
         let mut source = SourceCapabilities::default();
         source.max_tmds_clock = 50_000; // 50 MHz — below 1080p@60 8 bpc
@@ -357,7 +357,7 @@ mod tests {
     /// the result even for a configuration that the default engine would accept.
     #[test]
     fn with_engine_replaces_constraint_check() {
-        let mode = VideoMode::new(1920, 1080, 60, false);
+        let mode = VideoMode::new(1920, 1080, 60u16, false);
         let sink = rgb8_sink();
         let source = SourceCapabilities::default();
         let cable = CableCapabilities::unconstrained();
@@ -381,8 +381,8 @@ mod tests {
         // The default BEST_QUALITY ranker also puts 4K first (native resolution).
         // ReverseRanker inverts the accepted list, so 1080p appears first.
         let modes = [
-            VideoMode::new(3840, 2160, 60, false),
-            VideoMode::new(1920, 1080, 60, false),
+            VideoMode::new(3840, 2160, 60u16, false),
+            VideoMode::new(1920, 1080, 60u16, false),
         ];
         let sink = rgb8_sink();
         let source = SourceCapabilities::default();
@@ -405,7 +405,7 @@ mod tests {
     /// a rule that always rejects eliminates all candidates.
     #[test]
     fn with_extra_rule_applies_additional_constraint() {
-        let mode = VideoMode::new(1920, 1080, 60, false);
+        let mode = VideoMode::new(1920, 1080, 60u16, false);
         let sink = rgb8_sink();
         let source = SourceCapabilities::default();
         let cable = CableCapabilities::unconstrained();
@@ -424,7 +424,7 @@ mod tests {
     /// Rejections from `DefaultConstraintEngine` carry rule names via `TaggedViolation`.
     #[test]
     fn default_engine_rejections_carry_rule_name() {
-        let mode = VideoMode::new(1920, 1080, 60, false);
+        let mode = VideoMode::new(1920, 1080, 60u16, false);
         // rgb8_sink has color caps so the enumerator generates candidates.
         // A cable with max_tmds_clock=1_000 (1 MHz) is below 1080p@60's ~150 MHz
         // TMDS requirement — TmdsClockCheck fires and candidates are rejected.
@@ -452,7 +452,7 @@ mod tests {
     /// `negotiate_with_log` returns rejections alongside accepted configs.
     #[test]
     fn negotiate_with_log_captures_rejections() {
-        let mode = VideoMode::new(1920, 1080, 60, false);
+        let mode = VideoMode::new(1920, 1080, 60u16, false);
         let sink = rgb8_sink(); // only RGB 8 bpc
         let source = SourceCapabilities::default();
         let cable = CableCapabilities::unconstrained();
@@ -485,7 +485,7 @@ mod tests {
     /// `negotiate` (without log) produces the same accepted set as `negotiate_with_log`.
     #[test]
     fn negotiate_and_negotiate_with_log_agree_on_accepted() {
-        let mode = VideoMode::new(1920, 1080, 60, false);
+        let mode = VideoMode::new(1920, 1080, 60u16, false);
         let sink = rgb8_sink();
         let source = SourceCapabilities::default();
         let cable = CableCapabilities::unconstrained();
@@ -509,7 +509,7 @@ mod tests {
     /// and runs without panicking).
     #[test]
     fn negotiate_without_log_does_not_panic() {
-        let mode = VideoMode::new(1920, 1080, 60, false);
+        let mode = VideoMode::new(1920, 1080, 60u16, false);
         let sink = rgb8_sink();
         let source = SourceCapabilities::default();
         let cable = CableCapabilities::unconstrained();
@@ -523,7 +523,7 @@ mod tests {
     /// key fields; supplying the same mode twice yields only one accepted config.
     #[test]
     fn negotiate_dedup_removes_identical_candidates() {
-        let mode = VideoMode::new(1920, 1080, 60, false);
+        let mode = VideoMode::new(1920, 1080, 60u16, false);
         let sink = rgb8_sink();
         let source = SourceCapabilities::default();
         let cable = CableCapabilities::unconstrained();

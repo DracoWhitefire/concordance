@@ -198,7 +198,7 @@ exact clock is known:
 ```rust,no_run
 # use display_types::VideoMode;
 // Custom panel: supply the exact pixel clock from the PLL or hardware register.
-let mode = VideoMode::new(1920, 1200, 60, false).with_pixel_clock(154_000);
+let mode = VideoMode::new(1920, 1200, 60u16, false).with_pixel_clock(154_000);
 ```
 
 Without `.with_pixel_clock`, the pixel clock is derived via CVT-RB estimation, which
@@ -550,3 +550,8 @@ the previous optimistic behavior.
 - **Serde on all public types** — every public type derives `Serialize`/`Deserialize` behind
   a `serde` feature flag, covering inputs, outputs, and policy types. Enables diagnostic
   tooling, config persistence, and test fixtures without making serde a required dependency.
+- **Attested releases.** From the next release after 0.1.0, every release is published
+  through a GitHub Actions workflow, with crates.io trusted publishing, that signs the
+  `.crate` package with [SLSA Build Level 2](https://slsa.dev) provenance. Verify with
+  `gh attestation verify <file> --repo DracoWhitefire/concordance`. 0.1.0 carries no
+  provenance.

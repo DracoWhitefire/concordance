@@ -3,8 +3,11 @@ name: CI
 on:
   push:
     branches: [main, develop]
+  # Not main: the only PRs into main are release-tag's release-promote/* PRs,
+  # whose content already passed CI on develop. Opened by github-actions[bot],
+  # their runs would be held for approval and end as action_required/failure.
   pull_request:
-    branches: [main, develop]
+    branches: [develop]
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,20 +19,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
+          toolchain: stable
           components: rustfmt, clippy
 
       - name: Cache
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
+            examples/negotiate/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
@@ -37,22 +42,25 @@ jobs:
         run: cargo fmt --check
 
       - name: Clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --locked -- -D warnings
 
       - name: Docs
-        run: cargo rustdoc -- -D missing_docs
+        run: cargo rustdoc --locked -- -D missing_docs
 
       - name: Test (std)
-        run: cargo test
+        run: cargo test --locked
 
       - name: Test (std + serde)
-        run: cargo test --features serde
+        run: cargo test --locked --features serde
 
       - name: Build (alloc only)
-        run: cargo build --no-default-features --features alloc
+        run: cargo build --locked --no-default-features --features alloc
 
       - name: Build (no_std)
-        run: cargo build --no-default-features
+        run: cargo build --locked --no-default-features
+
+      - name: Build negotiate example
+        run: cargo build --locked --manifest-path examples/negotiate/Cargo.toml
 
   coverage:
     name: Coverage
@@ -61,18 +69,21 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
+          toolchain: stable
           components: llvm-tools-preview
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
+        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-llvm-cov
 
       - name: Cache
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -102,8 +113,7 @@ jobs:
         run: |
           BASELINE=$(cat .coverage-baseline)
           if awk "BEGIN { exit !(${COVERAGE} > ${BASELINE}) }"; then
-            LC_NUMERIC=C printf '%.2f
-' "${COVERAGE}" > .coverage-baseline
+            LC_NUMERIC=C printf '%.2f\n' "${COVERAGE}" > .coverage-baseline
             echo "Baseline updated: ${BASELINE} -> ${COVERAGE}"
           else
             echo "No update needed (${COVERAGE} <= ${BASELINE})"
@@ -111,7 +121,7 @@ jobs:
 
       - name: Open PR if baseline changed
         if: github.event_name == 'push'
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: ci/coverage-ratchet
