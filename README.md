@@ -8,6 +8,18 @@
 [![SLSA Level 2](https://slsa.dev/images/gh-badge-level2.svg)](https://slsa.dev)
 [![trusted publishing only](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fcrates.io%2Fapi%2Fv1%2Fcrates%2Fconcordance&query=%24.crate.trustpub_only&label=trusted%20publishing%20only)](#verifying-releases)
 
+> **Part of [Ashlar](https://ashlar-display.org)** — a display connection stack in Rust,
+> HDMI 2.1 first: from EDID parsing through mode negotiation to FRL link training.
+>
+> [display-types](https://github.com/DracoWhitefire/display-types) ·
+> [piaf](https://github.com/DracoWhitefire/piaf) ·
+> **concordance** ·
+> [cartouche](https://github.com/DracoWhitefire/cartouche) ·
+> [culvert](https://github.com/DracoWhitefire/culvert) ·
+> [plumbob](https://github.com/DracoWhitefire/plumbob) ·
+> [hdmi-hal](https://github.com/DracoWhitefire/hdmi-hal) ·
+> [hdmi-hal-i2c-dev](https://github.com/DracoWhitefire/hdmi-hal-i2c-dev)
+
 HDMI 2.1 mode negotiation — policy layer of the display connection stack.
 
 Given sink, source, and cable capabilities, concordance answers: "what modes can I drive
